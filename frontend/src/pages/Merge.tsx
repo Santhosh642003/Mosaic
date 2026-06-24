@@ -33,27 +33,6 @@ const LOG_SEQ = [
   { tag: 'ok',   color: '#3FB950', text: 'Merge complete — 31 files unified, 2 conflicts resolved' },
 ] as const;
 
-const MERGED_FILES = [
-  { path: 'main.py',             op: 'added',    lines: '+28' },
-  { path: 'docker-compose.yml',  op: 'added',    lines: '+42' },
-  { path: 'auth/router.py',      op: 'modified', lines: '+3 -1' },
-  { path: 'messages/router.py',  op: 'modified', lines: '+5 -2' },
-  { path: 'gateway/events.py',   op: 'modified', lines: '+8 -4' },
-  { path: 'frontend/src/App.tsx',op: 'modified', lines: '+12 -6' },
-  { path: 'requirements.txt',    op: 'added',    lines: '+18' },
-  { path: 'README.md',           op: 'added',    lines: '+64' },
-];
-
-const CONFLICTS = [
-  {
-    title: 'save_message signature mismatch',
-    body: 'T3 called save_message(room_id, content) but T2 expects save_message(room_id, MessageIn). Fixed by wrapping content in MessageIn(content=content).',
-  },
-  {
-    title: 'message_received event shape drift',
-    body: 'T4 expected {message, user} but T3 emits {content, user_id, ts}. Normalized to {id, content, user, ts} in gateway and updated frontend handler.',
-  },
-];
 
 const OP_COLORS: Record<string, string> = {
   added: '#3FB950', modified: '#4F8EF7', removed: '#F85149',
