@@ -15,6 +15,7 @@ function normalizeMember(m: Record<string, unknown>): RoomMember {
   const name = (m.display_name ?? m.displayName ?? '') as string;
   return {
     id: m.id as string,
+    userId: (m.user_id ?? m.userId) as string | undefined,
     displayName: name,
     initials: initials(name),
     avatarColor: avatarColor(name),
@@ -28,9 +29,17 @@ export default function Lobby() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const user = useUser();
-  const { room, members, setMembers, myMemberId, fetchRoom } = useRoomStore();
+  const { room, members, setMembers, myMemberId, setMyMemberId, fetchRoom } = useRoomStore();
 
   const [isStarting, setIsStarting] = useState(false);
+
+  // Identify which member record is "me" (the room creator never went through
+  // the join flow, so myMemberId may not be set yet).
+  useEffect(() => {
+    if (!user || myMemberId) return;
+    const mine = members.find((m) => m.userId === user.id);
+    if (mine) setMyMemberId(mine.id);
+  }, [user, members, myMemberId, setMyMemberId]);
 
   useEffect(() => {
     if (!code) return;
@@ -68,7 +77,9 @@ export default function Lobby() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  const isLead = user ? members.find((m) => m.id === myMemberId)?.role === 'lead' : false;
+  // The lead is the room creator — identified reliably by room.leadId, which
+  // does not depend on having joined as a member.
+  const isLead = !!(user && room && user.id === room.leadId);
   const canStart = members.length >= 2;
   const roomName = room?.name ?? '';
   const roomBrief = room?.brief ?? '';

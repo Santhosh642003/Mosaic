@@ -89,6 +89,7 @@ async def create_room(
         "members": {
             member.id: {
                 "id": member.id,
+                "user_id": user.id,
                 "display_name": user.display_name,
                 "role": "lead",
                 "status": "waiting",
@@ -154,6 +155,7 @@ async def join_room(
         state = json.loads(raw)
         state["members"][member.id] = {
             "id": member.id,
+            "user_id": user_id,
             "display_name": display_name,
             "role": "member",
             "status": "waiting",

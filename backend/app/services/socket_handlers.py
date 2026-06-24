@@ -97,6 +97,7 @@ async def handle_join_room(sid: str, data: dict) -> None:
                     "members": {
                         m.id: {
                             "id": m.id,
+                            "user_id": m.user_id,
                             "display_name": m.display_name,
                             "role": m.role,
                             "status": m.status,
