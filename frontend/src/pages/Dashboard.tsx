@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/stores/authStore';
 import { rooms as roomsApi } from '@/lib/api';
+import type { Room } from '@/types';
 
 import { timeAgo, avatarColor } from '@/lib/utils';
 
