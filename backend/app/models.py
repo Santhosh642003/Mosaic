@@ -30,6 +30,7 @@ class User(Base):
     hashed_password: Mapped[str | None] = mapped_column(String, nullable=True)
     display_name: Mapped[str] = mapped_column(String, nullable=False)
     github_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    github_token: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

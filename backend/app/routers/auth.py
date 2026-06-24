@@ -68,9 +68,9 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> Token
 # ── Me ────────────────────────────────────────────────────────────────────────
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: User = Depends(get_current_user)) -> User:
+async def me(user: User = Depends(get_current_user)) -> UserResponse:
     """Return the currently authenticated user."""
-    return user
+    return UserResponse.from_user(user)
 
 
 # ── GitHub OAuth ──────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ async def github_redirect() -> dict:
         f"https://github.com/login/oauth/authorize"
         f"?client_id={settings.github_client_id}"
         f"&redirect_uri={settings.github_redirect_uri}"
-        f"&scope=user:email"
+        f"&scope=user:email,repo"
     )
     return {"url": url}
 
@@ -143,18 +143,22 @@ async def github_callback(code: str, db: AsyncSession = Depends(get_db)) -> Toke
     result = await db.execute(select(User).where(User.github_id == github_id))
     user = result.scalar_one_or_none()
 
-    if not user:
+    if user:
+        user.github_token = gh_token
+    else:
         # Check if email exists (account merge)
         result2 = await db.execute(select(User).where(User.email == email))
         user = result2.scalar_one_or_none()
         if user:
             user.github_id = github_id
+            user.github_token = gh_token
             user.avatar = gh_user.get("avatar_url")
         else:
             user = User(
                 email=email,
                 display_name=gh_user.get("name") or gh_user.get("login", "GitHub User"),
                 github_id=github_id,
+                github_token=gh_token,
                 avatar=gh_user.get("avatar_url"),
             )
             db.add(user)

@@ -37,9 +37,22 @@ class UserResponse(BaseModel):
     display_name: str
     avatar: str | None
     github_id: str | None
+    has_github_token: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_user(cls, user: "User") -> "UserResponse":  # type: ignore[name-defined]
+        return cls(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            avatar=user.avatar,
+            github_id=user.github_id,
+            has_github_token=bool(user.github_token),
+            created_at=user.created_at,
+        )
 
 
 # ── Room ─────────────────────────────────────────────────────────────────────
@@ -144,6 +157,21 @@ class MergeResponse(BaseModel):
     merged_files: dict[str, Any] = {}
     diff_report: list[dict[str, Any]] | None = None
     conflicts: list[dict[str, Any]] | None = None
+
+
+# ── GitHub push ───────────────────────────────────────────────────────────────
+
+class GitHubPushRequest(BaseModel):
+    repo: str  # "owner/repo" or just "repo" (auto-prefixes authenticated user)
+    branch: str = "mosaic-merge"
+    commit_message: str = "feat: Mosaic merged codebase"
+
+
+class GitHubPushResponse(BaseModel):
+    repo: str
+    branch: str
+    url: str
+    files_pushed: int
 
 
 # ── User update ───────────────────────────────────────────────────────────────

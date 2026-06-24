@@ -116,4 +116,15 @@ export const merge = {
   result: (roomCode: string) => client.get<MergeResult>(`/rooms/${roomCode}/merge/result`),
 
   downloadUrl: (roomCode: string) => `/api/rooms/${roomCode}/merge/download`,
+
+  pushToGitHub: (
+    roomCode: string,
+    repo: string,
+    branch: string,
+    commitMessage: string,
+  ) =>
+    client.post<{ repo: string; branch: string; url: string; filesPushed: number }>(
+      `/rooms/${roomCode}/merge/push-github`,
+      { repo, branch, commit_message: commitMessage },
+    ),
 };

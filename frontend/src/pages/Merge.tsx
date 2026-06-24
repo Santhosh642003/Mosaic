@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Download, Share2, CheckCircle, Circle, Loader2, FileText, GitMerge, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Download, Share2, CheckCircle, Circle, Loader2, FileText, GitMerge, AlertTriangle, ExternalLink, Github } from 'lucide-react';
 import { MosaicLogo } from '@/components/shared/MosaicLogo';
 import { Button } from '@/components/ui/button';
 import { useMergeStore } from '@/stores/mergeStore';
 import { useRoomStore } from '@/stores/roomStore';
+import { useUser } from '@/stores/authStore';
 import { getSocket, connectSocket, emit } from '@/lib/socket';
-import { merge as mergeApi } from '@/lib/api';
+import { merge as mergeApi, auth as authApi } from '@/lib/api';
 import { cn, copyToClipboard } from '@/lib/utils';
 
 const STAGE_LABELS = [
@@ -64,10 +65,19 @@ export default function MergePage() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { room } = useRoomStore();
+  const user = useUser();
   const { phase, stage, logs, setPhase, setStage, appendLog, setResult, setError } = useMergeStore();
 
   const [logCount, setLogCount] = useState(0);
   const [copied, setCopied] = useState(false);
+
+  // GitHub push state
+  const [ghRepo, setGhRepo] = useState('');
+  const [ghBranch, setGhBranch] = useState('mosaic-merge');
+  const [ghPushing, setGhPushing] = useState(false);
+  const [ghResult, setGhResult] = useState<{ url: string; filesPushed: number } | null>(null);
+  const [ghError, setGhError] = useState('');
+
   const logEndRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -163,6 +173,21 @@ export default function MergePage() {
     await copyToClipboard(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleGitHubPush = async () => {
+    if (!ghRepo.trim()) return;
+    setGhPushing(true);
+    setGhError('');
+    setGhResult(null);
+    try {
+      const r = await mergeApi.pushToGitHub(code!, ghRepo.trim(), ghBranch.trim() || 'mosaic-merge', 'feat: Mosaic merged codebase');
+      setGhResult({ url: r.data.url, filesPushed: r.data.filesPushed });
+    } catch (e) {
+      setGhError((e as Error).message);
+    } finally {
+      setGhPushing(false);
+    }
   };
 
   const displayLogs = logs.length > 0 ? logs : LOG_SEQ.slice(0, logCount).map((l, i) => ({ ...l, id: `l${i}`, timestamp: '' }));
@@ -315,6 +340,84 @@ export default function MergePage() {
 
         {/* Sidebar */}
         <div className="space-y-4">
+          {/* GitHub push */}
+          {phase === 'complete' && (
+            <div className="rounded-xl border border-ms-border bg-ms-surface overflow-hidden">
+              <div className="px-4 py-3 border-b border-ms-subtle flex items-center gap-2">
+                <Github size={13} className="text-ms-fg3" />
+                <span className="text-xs font-bold uppercase tracking-wider text-ms-fg3">Push to GitHub</span>
+              </div>
+              <div className="p-4 space-y-3">
+                {!user?.hasGithubToken ? (
+                  <div className="text-center py-2">
+                    <p className="text-xs text-ms-fg3 mb-3">Connect your GitHub account to push directly</p>
+                    <button
+                      onClick={async () => {
+                        const r = await authApi.githubUrl();
+                        if (r.data.url) window.location.href = r.data.url;
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-ms-fg2 border border-ms-border rounded-lg px-3 py-1.5 hover:bg-ms-raised transition-colors"
+                    >
+                      <Github size={12} /> Connect GitHub
+                    </button>
+                  </div>
+                ) : ghResult ? (
+                  <div className="text-center py-1">
+                    <CheckCircle size={20} className="text-ms-green mx-auto mb-2" />
+                    <p className="text-xs text-ms-green font-semibold mb-1">{ghResult.filesPushed} files pushed!</p>
+                    <a
+                      href={ghResult.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-ms-blue hover:underline inline-flex items-center gap-1"
+                    >
+                      View on GitHub <ExternalLink size={10} />
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-semibold text-ms-fg3 uppercase tracking-wider block mb-1">
+                        Repository
+                      </label>
+                      <input
+                        type="text"
+                        value={ghRepo}
+                        onChange={(e) => setGhRepo(e.target.value)}
+                        placeholder="owner/repo or just repo-name"
+                        className="w-full bg-ms-raised border border-ms-border rounded-lg px-3 py-1.5 text-xs text-ms-fg placeholder:text-ms-fg3 focus:outline-none focus:border-ms-blue"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-ms-fg3 uppercase tracking-wider block mb-1">
+                        Branch
+                      </label>
+                      <input
+                        type="text"
+                        value={ghBranch}
+                        onChange={(e) => setGhBranch(e.target.value)}
+                        placeholder="mosaic-merge"
+                        className="w-full bg-ms-raised border border-ms-border rounded-lg px-3 py-1.5 text-xs text-ms-fg placeholder:text-ms-fg3 focus:outline-none focus:border-ms-blue"
+                      />
+                    </div>
+                    {ghError && (
+                      <p className="text-xs text-ms-red">{ghError}</p>
+                    )}
+                    <Button
+                      className="w-full"
+                      size="sm"
+                      disabled={!ghRepo.trim() || ghPushing}
+                      loading={ghPushing}
+                      onClick={handleGitHubPush}
+                    >
+                      <Github size={13} /> Push to GitHub
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Live log */}
           <div className="rounded-xl border border-ms-border bg-ms-surface overflow-hidden sticky top-20">
             <div className="px-4 py-3 border-b border-ms-subtle">
