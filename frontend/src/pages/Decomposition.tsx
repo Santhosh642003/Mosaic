@@ -9,6 +9,7 @@ import { useTaskStore } from '@/stores/taskStore';
 import { useRoomStore } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
 import { getSocket, connectSocket } from '@/lib/socket';
+import { tasks as tasksApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 import type { Task } from '@/types';
@@ -188,6 +189,10 @@ export default function Decomposition() {
     connectSocket();
     const socket = getSocket();
 
+    // Re-join the socket room in case we navigated here from Lobby
+    const token = localStorage.getItem('access_token');
+    if (code) socket.emit('join_room', { code, token });
+
     socket.on('decomposition_stream', ({ chunk }: { chunk: string }) => {
       if (chunk) setStreamIdx((i) => Math.min(i + 1, STREAM_MSGS.length - 1));
     });
@@ -243,9 +248,34 @@ export default function Decomposition() {
       setRevealed(tasks.length);
     }
 
+    // HTTP fallback: poll every 4s in case the socket event was missed
+    // (e.g. page navigated before backend finished emitting)
+    const pollRef = setInterval(async () => {
+      if (!code) return;
+      try {
+        const res = await tasksApi.list(code);
+        if (res.data && res.data.length > 0) {
+          clearInterval(pollRef);
+          clearInterval(streamRef.current!);
+          clearInterval(revealRef.current!);
+          setTasks(res.data);
+          setIsDecomposing(false);
+          let r = 0;
+          revealRef.current = setInterval(() => {
+            r++;
+            setRevealed(r);
+            if (r >= res.data.length) clearInterval(revealRef.current!);
+          }, 200);
+        }
+      } catch {
+        // backend not ready yet, retry next tick
+      }
+    }, 4000);
+
     return () => {
       clearInterval(streamRef.current!);
       clearInterval(revealRef.current!);
+      clearInterval(pollRef);
       socket.off('decomposition_stream');
       socket.off('decomposition_complete');
     };
