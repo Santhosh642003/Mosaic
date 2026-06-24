@@ -5,6 +5,7 @@ import { RoomHeader } from '@/components/shared/RoomHeader';
 import { Button } from '@/components/ui/button';
 import { useMergeStore } from '@/stores/mergeStore';
 import { useRoomStore } from '@/stores/roomStore';
+import { useTaskStore } from '@/stores/taskStore';
 import { useUser } from '@/stores/authStore';
 import { getSocket, connectSocket, emit } from '@/lib/socket';
 import { merge as mergeApi, auth as authApi } from '@/lib/api';
@@ -64,9 +65,11 @@ const OP_LABELS: Record<string, string> = {
 export default function MergePage() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
-  const { room } = useRoomStore();
+  const { room, members } = useRoomStore();
+  const { tasks } = useTaskStore();
+  const branchCount = members.length || tasks.length;
   const user = useUser();
-  const { phase, stage, logs, setPhase, setStage, appendLog, setResult, setError } = useMergeStore();
+  const { phase, stage, logs, result, setPhase, setStage, appendLog, setResult, setError } = useMergeStore();
 
   const [logCount, setLogCount] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -144,19 +147,7 @@ export default function MergePage() {
     logRef.current = setInterval(() => {
       l++;
       setLogCount(l);
-      appendLog(LOG_SEQ[Math.min(l - 1, LOG_SEQ.length - 1)] as { tag: 'info' | 'ok' | 'warn'; text: string });
-      if (l >= LOG_SEQ.length) {
-        clearInterval(logRef.current!);
-        setTimeout(() => {
-          setPhase('complete');
-          setResult({
-            id: 'merge-1', roomId: room?.id ?? '', mergedFiles: {},
-            diffReport: MERGED_FILES.map((f) => ({ path: f.path, operation: f.op as 'added' | 'modified' | 'removed' })),
-            conflicts: CONFLICTS.map((c, i) => ({ id: `c${i}`, description: c.title, resolution: c.body, files: [] })),
-            createdAt: new Date().toISOString(),
-          });
-        }, 400);
-      }
+      if (l >= LOG_SEQ.length) clearInterval(logRef.current!);
     }, 700);
   };
 
@@ -211,9 +202,10 @@ export default function MergePage() {
             <div>
               <h1 className="text-2xl font-extrabold tracking-tight mb-1">Semantic merge</h1>
               <p className="text-sm text-ms-fg3">
-                {phase === 'idle' && '4 branches ready to merge'}
-                {phase === 'merging' && 'AI is reconciling 4 branches…'}
-                {phase === 'complete' && '31 files unified · 2 conflicts auto-resolved'}
+                {phase === 'idle' && `${branchCount || 'All'} branch${branchCount !== 1 ? 'es' : ''} ready to merge`}
+                {phase === 'merging' && `AI is reconciling ${branchCount || ''} branch${branchCount !== 1 ? 'es' : ''}…`}
+                {phase === 'complete' && result && `${result.diffReport?.length ?? 0} files unified · ${result.conflicts?.length ?? 0} conflict${result.conflicts?.length !== 1 ? 's' : ''} auto-resolved`}
+                {phase === 'complete' && !result && 'Merge complete'}
               </p>
             </div>
             {phase === 'idle' && (
@@ -263,7 +255,7 @@ export default function MergePage() {
           {phase === 'idle' && (
             <div className="rounded-xl border border-ms-border bg-ms-surface p-8 text-center">
               <GitMerge size={32} className="text-ms-purple mx-auto mb-4" />
-              <h3 className="font-bold text-lg mb-2">All 4 branches submitted</h3>
+              <h3 className="font-bold text-lg mb-2">All {branchCount || ''} branch{branchCount !== 1 ? 'es' : ''} submitted</h3>
               <p className="text-sm text-ms-fg2 max-w-md mx-auto">
                 DeepSeek-R1 will review every file, resolve interface mismatches semantically,
                 and produce a unified runnable codebase.
@@ -276,7 +268,7 @@ export default function MergePage() {
             <div className="rounded-xl border border-ms-purple/30 bg-ms-purple/5 p-8 text-center">
               <Loader2 size={32} className="text-ms-purple mx-auto mb-4 animate-ms-spin" />
               <h3 className="font-bold text-lg text-ms-purple mb-2">{STAGE_LABELS[stage]}…</h3>
-              <p className="text-sm text-ms-fg2">Reconciling 4 branches · DeepSeek-R1</p>
+              <p className="text-sm text-ms-fg2">Reconciling {branchCount || ''} branch{branchCount !== 1 ? 'es' : ''} · DeepSeek-R1</p>
             </div>
           )}
 
@@ -284,49 +276,59 @@ export default function MergePage() {
           {phase === 'complete' && (
             <>
               {/* Conflict report */}
-              <div className="rounded-xl border border-ms-green/40 bg-ms-green/5 p-5 mb-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <CheckCircle size={16} className="text-ms-green" />
-                  <span className="font-bold text-ms-green">2 conflicts found and auto-resolved</span>
-                </div>
-                <div className="space-y-3">
-                  {CONFLICTS.map((c, i) => (
-                    <div key={i} className="flex gap-3">
-                      <AlertTriangle size={14} className="text-ms-amber mt-0.5 flex-none" />
-                      <div>
-                        <div className="text-sm font-semibold mb-1">{c.title}</div>
-                        <div className="text-xs text-ms-fg2 leading-relaxed">{c.body}</div>
+              {result?.conflicts && result.conflicts.length > 0 && (
+                <div className="rounded-xl border border-ms-green/40 bg-ms-green/5 p-5 mb-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <CheckCircle size={16} className="text-ms-green" />
+                    <span className="font-bold text-ms-green">{result.conflicts.length} conflict{result.conflicts.length !== 1 ? 's' : ''} found and auto-resolved</span>
+                  </div>
+                  <div className="space-y-3">
+                    {result.conflicts.map((c) => (
+                      <div key={c.id} className="flex gap-3">
+                        <AlertTriangle size={14} className="text-ms-amber mt-0.5 flex-none" />
+                        <div>
+                          <div className="text-sm font-semibold mb-1">{c.description}</div>
+                          <div className="text-xs text-ms-fg2 leading-relaxed">{c.resolution}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+              {result?.conflicts?.length === 0 && (
+                <div className="rounded-xl border border-ms-green/40 bg-ms-green/5 p-5 mb-6 flex items-center gap-2">
+                  <CheckCircle size={16} className="text-ms-green" />
+                  <span className="font-bold text-ms-green">No conflicts — clean merge</span>
+                </div>
+              )}
 
               {/* File tree + diff */}
-              <div className="rounded-xl border border-ms-border bg-ms-surface overflow-hidden">
-                <div className="px-4 py-3 border-b border-ms-subtle">
-                  <span className="text-xs font-bold uppercase tracking-wider text-ms-fg3">
-                    Merged file tree · {MERGED_FILES.length} changed
-                  </span>
+              {result?.diffReport && result.diffReport.length > 0 && (
+                <div className="rounded-xl border border-ms-border bg-ms-surface overflow-hidden">
+                  <div className="px-4 py-3 border-b border-ms-subtle">
+                    <span className="text-xs font-bold uppercase tracking-wider text-ms-fg3">
+                      Merged file tree · {result.diffReport.length} changed
+                    </span>
+                  </div>
+                  <div className="divide-y divide-ms-subtle">
+                    {result.diffReport.map((f) => (
+                      <div key={f.path} className="flex items-center gap-3 px-4 py-3 hover:bg-ms-raised transition-colors">
+                        <span
+                          className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-none"
+                          style={{ background: `${OP_COLORS[f.operation]}20`, color: OP_COLORS[f.operation] }}
+                        >
+                          {OP_LABELS[f.operation]}
+                        </span>
+                        <FileText size={13} className="text-ms-fg3 flex-none" />
+                        <span className="flex-1 font-mono text-sm text-ms-fg">{f.path}</span>
+                        <span className="text-xs font-mono" style={{ color: OP_COLORS[f.operation] }}>
+                          {f.operation === 'added' ? '+' : f.operation === 'removed' ? '-' : '~'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="divide-y divide-ms-subtle">
-                  {MERGED_FILES.map((f) => (
-                    <div key={f.path} className="flex items-center gap-3 px-4 py-3 hover:bg-ms-raised transition-colors">
-                      <span
-                        className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-none"
-                        style={{ background: `${OP_COLORS[f.op]}20`, color: OP_COLORS[f.op] }}
-                      >
-                        {OP_LABELS[f.op]}
-                      </span>
-                      <FileText size={13} className="text-ms-fg3 flex-none" />
-                      <span className="flex-1 font-mono text-sm text-ms-fg">{f.path}</span>
-                      <span className="text-xs font-mono" style={{ color: OP_COLORS[f.op] }}>
-                        {f.lines}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
             </>
           )}
         </div>

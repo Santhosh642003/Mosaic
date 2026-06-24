@@ -8,7 +8,7 @@ import { useUser } from '@/stores/authStore';
 import { rooms as roomsApi, users as usersApi, merge as mergeApi } from '@/lib/api';
 import type { Room, SavedCodebase } from '@/types';
 
-import { timeAgo, avatarColor } from '@/lib/utils';
+import { timeAgo } from '@/lib/utils';
 
 const ROOM_EMOJIS = ['💬', '🏆', '🍳', '🚀', '🎮', '🌐', '🛠️', '🎯'];
 
@@ -128,14 +128,9 @@ export default function Dashboard() {
                       <p className="text-xs text-ms-fg3 truncate">{room.brief}</p>
                     </div>
                     <div className="flex items-center gap-3 flex-none">
-                      <div className="flex -space-x-1.5">
-                        {Array.from({ length: Math.min(room.maxTeammates, 4) }).map((_, i) => (
-                          <div
-                            key={i}
-                            className="w-6 h-6 rounded-full border-2 border-ms-surface flex items-center justify-center text-[8px] font-bold text-white"
-                            style={{ background: avatarColor(String(i)) }}
-                          />
-                        ))}
+                      <div className="flex items-center gap-1 text-xs text-ms-fg3">
+                        <Users size={12} />
+                        <span>{room.maxTeammates}</span>
                       </div>
                       <div className="text-xs text-ms-fg3">{timeAgo(room.createdAt)}</div>
                       <ArrowRight size={14} className="text-ms-fg3 group-hover:text-ms-fg transition-colors" />

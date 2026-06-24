@@ -15,56 +15,6 @@ const MonacoEditor = lazy(() =>
   import('@monaco-editor/react').then((m) => ({ default: m.default }))
 );
 
-const MOCK_CODE = `from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
-import uuid
-
-from .models import Message
-from .schemas import MessageIn, MessageOut
-from .dependencies import get_db, verify_token
-
-router = APIRouter(prefix="/messages", tags=["messages"])
-
-
-@router.post("/", response_model=MessageOut)
-async def save_message(
-    msg: MessageIn,
-    room_id: str,
-    user_id: str = Depends(verify_token),
-    db: AsyncSession = Depends(get_db),
-) -> MessageOut:
-    """Save a chat message and return the persisted record."""
-    record = Message(
-        id=str(uuid.uuid4()),
-        room_id=room_id,
-        user_id=user_id,
-        content=msg.content,
-    )
-    db.add(record)
-    await db.commit()
-    await db.refresh(record)
-    return MessageOut.from_orm(record)
-
-
-@router.get("/{room_id}", response_model=list[MessageOut])
-async def get_messages(
-    room_id: str,
-    limit: int = 50,
-    offset: int = 0,
-    db: AsyncSession = Depends(get_db),
-) -> list[MessageOut]:
-    """Fetch paginated message history for a room."""
-    result = await db.execute(
-        select(Message)
-        .where(Message.room_id == room_id)
-        .order_by(Message.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    return [MessageOut.from_orm(r) for r in result.scalars()]
-`;
-
 
 const QUICK_ACTIONS = [
   { icon: Zap,      label: 'Write boilerplate' },
@@ -120,7 +70,7 @@ export default function CodingSession() {
   const [isMarking, setIsMarking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const currentCode = editorCode[activeFile] ?? (myTask ? '' : MOCK_CODE);
+  const currentCode = editorCode[activeFile] ?? '';
 
   const initialMessage: ChatMessage = {
     id: '0',
@@ -188,20 +138,6 @@ export default function CodingSession() {
       prompt: text,
       contextCode: JSON.stringify({ task: myTask }),
     });
-
-    // Local fallback simulation
-    const response = `Here's how I'd approach that:\n\n\`\`\`python\n# Updated implementation\nasync def save_message(\n    msg: MessageIn,\n    room_id: str,\n    user_id: str = Depends(verify_token),\n    db: AsyncSession = Depends(get_db),\n) -> MessageOut:\n    # Check for duplicates first\n    existing = await db.execute(\n        select(Message).where(\n            Message.room_id == room_id,\n            Message.content == msg.content,\n            Message.user_id == user_id,\n        ).limit(1)\n    )\n    if existing.scalar():\n        raise HTTPException(status_code=409, detail="Duplicate message")\n    record = Message(...)\n    ...\n\`\`\`\n\nThis adds idempotency protection while keeping the contract intact.`;
-
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i >= response.length) {
-        clearInterval(interval);
-        finalizeChatStream();
-        return;
-      }
-      appendChatChunk(response[i]);
-      i++;
-    }, 12);
   };
 
   const handleMarkDone = async () => {

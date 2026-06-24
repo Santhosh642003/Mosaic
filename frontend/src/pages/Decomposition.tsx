@@ -13,80 +13,12 @@ import { cn } from '@/lib/utils';
 
 import type { Task } from '@/types';
 
-const MOCK_TASKS: Task[] = [
-  {
-    id: 't1', roomId: 'r1', name: 'Auth service', complexity: 'Medium', color: '#4F8EF7',
-    description: 'JWT-based auth with registration, login, GitHub OAuth, and session management via Redis.',
-    tech: 'FastAPI · python-jose · bcrypt · Redis',
-    files: ['auth/router.py', 'auth/models.py', 'auth/dependencies.py', 'auth/schemas.py'],
-    exposes: [
-      { signature: 'POST /auth/register → User', description: 'Register new user' },
-      { signature: 'POST /auth/login → Token', description: 'Issue JWT' },
-      { signature: 'GET /auth/me → User', description: 'Current user from token' },
-      { signature: 'verify_token(token: str) → UserID', description: 'Dep injection helper' },
-    ],
-    dependsOn: [],
-    assignedTo: 'u1', assigneeName: 'Maya Chen',
-    status: 'in_progress', code: {},
-  },
-  {
-    id: 't2', roomId: 'r1', name: 'Message API', complexity: 'Medium', color: '#3FB950',
-    description: 'REST endpoints for sending and fetching messages with pagination, stored in PostgreSQL.',
-    tech: 'FastAPI · SQLAlchemy · PostgreSQL',
-    files: ['messages/router.py', 'messages/models.py', 'messages/schemas.py'],
-    exposes: [
-      { signature: 'POST /messages → Message', description: 'Save message' },
-      { signature: 'GET /messages/{room_id} → list[Message]', description: 'Paginated history' },
-      { signature: 'save_message(room_id, msg) → Message', description: 'Internal fn' },
-    ],
-    dependsOn: [{ signature: 'verify_token(token) → UserID', taskId: 't1' }],
-    assignedTo: undefined, assigneeName: undefined,
-    status: 'unassigned', code: {},
-  },
-  {
-    id: 't3', roomId: 'r1', name: 'WebSocket gateway', complexity: 'High', color: '#A371F7',
-    description: 'Real-time message broadcast over Socket.io with Redis pub/sub and room-level fanout.',
-    tech: 'python-socketio · Redis · uvicorn',
-    files: ['gateway/socket_manager.py', 'gateway/events.py', 'gateway/presence.py'],
-    exposes: [
-      { signature: 'on_connect(socket_id, room_id)', description: 'Handle join' },
-      { signature: 'broadcast_message(room_id, msg)', description: 'Fanout to room' },
-      { signature: 'emit_presence(room_id, users)', description: 'Presence update' },
-    ],
-    dependsOn: [
-      { signature: 'save_message(room_id, msg) → Message', taskId: 't2' },
-      { signature: 'verify_token(token) → UserID', taskId: 't1' },
-    ],
-    assignedTo: 'u3', assigneeName: 'Sofia Reyes',
-    status: 'in_progress', code: {},
-  },
-  {
-    id: 't4', roomId: 'r1', name: 'React frontend', complexity: 'High', color: '#D29922',
-    description: 'React + TypeScript SPA with auth forms, real-time chat UI, message history, and presence indicators.',
-    tech: 'React 18 · TypeScript · Tailwind · Socket.io',
-    files: ['frontend/src/App.tsx', 'frontend/src/pages/', 'frontend/src/components/'],
-    exposes: [
-      { signature: 'ChatRoom component (roomId: string)', description: 'Main UI' },
-      { signature: 'usePresence(roomId) → User[]', description: 'Presence hook' },
-    ],
-    dependsOn: [
-      { signature: 'POST /auth/login → Token', taskId: 't1' },
-      { signature: 'GET /messages/{room_id}', taskId: 't2' },
-      { signature: 'broadcast_message / on_connect', taskId: 't3' },
-    ],
-    assignedTo: 'u4', assigneeName: 'Devon Park',
-    status: 'in_progress', code: {},
-  },
-];
-
 const STREAM_MSGS = [
   'Analyzing project brief…',
   'Identifying parallelizable boundaries…',
   'Defining interface contracts…',
-  'Generating task 1 of 4…',
-  'Generating task 2 of 4…',
-  'Generating task 3 of 4…',
-  'Generating task 4 of 4…',
+  'Generating tasks…',
+  'Assigning based on team skills…',
   'Finalizing contract graph…',
 ];
 
@@ -94,8 +26,8 @@ const COMPLEXITY_BADGE: Record<string, 'green' | 'amber' | 'red'> = {
   Low: 'green', Medium: 'amber', High: 'red',
 };
 
-function TaskCard({ task, index, onAssign, myAssignment, myName }: {
-  task: Task; index: number; onAssign: (id: string) => void; myAssignment: string | null; myName?: string;
+function TaskCard({ task, index, onAssign, myAssignment, myName, allTasks }: {
+  task: Task; index: number; onAssign: (id: string) => void; myAssignment: string | null; myName?: string; allTasks: Task[];
 }) {
   const isAssigned = !!task.assignedTo;
   const isMyTask = task.id === myAssignment;
@@ -159,7 +91,7 @@ function TaskCard({ task, index, onAssign, myAssignment, myName }: {
             <p className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3 mb-2">Depends on</p>
             <div className="space-y-1">
               {task.dependsOn.map((d) => {
-                const depTask = MOCK_TASKS.find((t) => t.id === d.taskId);
+                const depTask = allTasks.find((t) => t.id === d.taskId);
                 return (
                   <div key={d.signature} className="flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded bg-ms-deep border border-ms-subtle"
                     style={{ color: depTask?.color ?? '#7D8590' }}>
@@ -236,12 +168,12 @@ export default function Decomposition() {
   const streamRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const revealRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const displayTasks = tasks.length > 0 ? tasks : MOCK_TASKS;
+  const displayTasks = tasks;
 
   useEffect(() => {
     setIsDecomposing(true);
 
-    // Simulate streaming while waiting for real socket events
+    // Cycle through stream messages while waiting for real socket events
     streamRef.current = setInterval(() => {
       setStreamIdx((i) => {
         if (i >= STREAM_MSGS.length - 1) {
@@ -250,7 +182,7 @@ export default function Decomposition() {
         }
         return i + 1;
       });
-    }, 600);
+    }, 900);
 
     // Socket integration
     connectSocket();
@@ -295,7 +227,13 @@ export default function Decomposition() {
       clearInterval(revealRef.current!);
       setTasks(normalized);
       setIsDecomposing(false);
-      setRevealed(normalized.length);
+      // Reveal real tasks one by one
+      let r = 0;
+      revealRef.current = setInterval(() => {
+        r++;
+        setRevealed(r);
+        if (r >= normalized.length) clearInterval(revealRef.current!);
+      }, 200);
     });
 
     // If real tasks already loaded (page refresh), show them immediately
@@ -303,18 +241,6 @@ export default function Decomposition() {
       clearInterval(streamRef.current!);
       setIsDecomposing(false);
       setRevealed(tasks.length);
-    } else {
-      // Reveal mock cards as placeholders while real decomp runs
-      revealRef.current = setInterval(() => {
-        setRevealed((r) => {
-          if (r >= MOCK_TASKS.length) {
-            clearInterval(revealRef.current!);
-            setIsDecomposing(false);
-            return r;
-          }
-          return r + 1;
-        });
-      }, 900);
     }
 
     return () => {
@@ -333,7 +259,7 @@ export default function Decomposition() {
 
   const visibleTasks = displayTasks.slice(0, revealed);
   const unassignedCount = displayTasks.filter((t) => !t.assignedTo).length;
-  const allAssigned = revealed >= displayTasks.length && unassignedCount === 0;
+  const allAssigned = displayTasks.length > 0 && revealed >= displayTasks.length && unassignedCount === 0;
 
   const allContracts = displayTasks.flatMap((t) =>
     t.exposes.map((c) => ({ ...c, taskName: t.name, taskColor: t.color }))
@@ -351,7 +277,7 @@ export default function Decomposition() {
           <div className="rounded-xl border border-ms-border bg-ms-surface p-5 mb-6">
             <p className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3 mb-2">Project brief</p>
             <p className="text-sm text-ms-fg2 leading-relaxed">
-              {room?.brief ?? 'Build a real-time chat app with auth, message history, WebSocket support, and a React frontend. PostgreSQL for persistence, Redis for pub/sub.'}
+              {room?.brief ?? '—'}
             </p>
           </div>
 
@@ -371,6 +297,11 @@ export default function Decomposition() {
 
           {/* Task cards */}
           <div className="space-y-4">
+            {visibleTasks.length === 0 && !isDecomposing && (
+              <div className="rounded-xl border border-dashed border-ms-border bg-ms-surface p-10 text-center">
+                <p className="text-sm text-ms-fg3">No tasks yet — waiting for decomposition to complete.</p>
+              </div>
+            )}
             {visibleTasks.map((task, i) => (
               <TaskCard
                 key={task.id}
@@ -379,6 +310,7 @@ export default function Decomposition() {
                 onAssign={handleAssign}
                 myAssignment={myTaskId}
                 myName={myName}
+                allTasks={tasks}
               />
             ))}
           </div>
