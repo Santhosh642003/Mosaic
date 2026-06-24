@@ -30,9 +30,9 @@ class Settings(BaseSettings):
 
     # ── Groq LLM ─────────────────────────────────────────────────────────
     groq_api_key: str = ""
-    decomp_model: str = "deepseek-r1-distill-llama-70b"
-    coding_model: str = "qwen-qwq-32b"
-    merge_model: str = "deepseek-r1-distill-llama-70b"
+    decomp_model: str = "llama-3.3-70b-versatile"
+    coding_model: str = "llama-3.3-70b-versatile"
+    merge_model: str = "llama-3.3-70b-versatile"
 
     # ── Room settings ─────────────────────────────────────────────────────
     room_code_length: int = 6
