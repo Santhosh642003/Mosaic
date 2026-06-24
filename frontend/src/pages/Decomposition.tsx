@@ -229,9 +229,10 @@ export default function Decomposition() {
       if (chunk) setStreamIdx((i) => Math.min(i + 1, STREAM_MSGS.length - 1));
     });
 
-    socket.on('decomposition_complete', (data: Record<string, unknown>) => {
+    socket.on('decomposition_complete', (data: unknown) => {
       // Backend sends { tasks: [...], room_status: "coding" }
-      const rawTasks = (Array.isArray(data) ? data : (data.tasks ?? [])) as Record<string, unknown>[];
+      const d = data as Record<string, unknown>;
+      const rawTasks = (Array.isArray(d) ? d : ((d.tasks ?? []) as unknown[])) as Record<string, unknown>[];
 
       const normalized = rawTasks.map((t) => ({
         id: t.id as string,

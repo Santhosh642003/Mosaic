@@ -28,7 +28,7 @@ export default function Lobby() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const user = useUser();
-  const { room, members, setMembers, setRoom, myMemberId, fetchRoom } = useRoomStore();
+  const { room, members, setMembers, myMemberId, fetchRoom } = useRoomStore();
 
   const [isStarting, setIsStarting] = useState(false);
 
@@ -43,10 +43,11 @@ export default function Lobby() {
     const token = localStorage.getItem('access_token');
     socket.emit('join_room', { code, token });
 
-    socket.on('room_state', (rawState: Record<string, unknown>) => {
+    socket.on('room_state', (rawState: unknown) => {
       // Backend socket emits: { room_id, code, status, members: { id: {...snake_case} } }
       // Normalize to what the store expects
-      const membersRaw = (rawState.members ?? {}) as Record<string, Record<string, unknown>>;
+      const rs = rawState as Record<string, unknown>;
+      const membersRaw = (rs.members ?? {}) as Record<string, Record<string, unknown>>;
       const membersArr: RoomMember[] = Array.isArray(membersRaw)
         ? (membersRaw as unknown as Record<string, unknown>[]).map(normalizeMember)
         : Object.values(membersRaw).map(normalizeMember);

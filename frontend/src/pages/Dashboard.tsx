@@ -6,26 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/stores/authStore';
 import { rooms as roomsApi } from '@/lib/api';
-import type { Room } from '@/types';
+
 import { timeAgo, avatarColor } from '@/lib/utils';
 
-const MOCK_ROOMS: Room[] = [
-  {
-    id: '1', code: '4K7P2X', name: 'PingChat', brief: 'Real-time chat app with auth, message history, WebSocket support, and a React frontend.',
-    language: ['React', 'FastAPI', 'Postgres'], maxTeammates: 4, status: 'coding',
-    leadId: 'me', createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: '2', code: 'R8QN5W', name: 'Leaderboard Engine', brief: 'Competitive leaderboard with real-time score updates, streak tracking, and team rankings.',
-    language: ['TypeScript', 'Go', 'Redis'], maxTeammates: 3, status: 'complete',
-    leadId: 'me', createdAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString(), completedAt: new Date(Date.now() - 20 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: '3', code: 'M2LX9T', name: 'Recipe AI', brief: 'AI-powered recipe generator with ingredient parsing, dietary filters, and meal planning.',
-    language: ['Python', 'React', 'Postgres'], maxTeammates: 5, status: 'complete',
-    leadId: 'me', createdAt: new Date(Date.now() - 72 * 3600 * 1000).toISOString(), completedAt: new Date(Date.now() - 68 * 3600 * 1000).toISOString(),
-  },
-];
 
 const ROOM_ICONS: Record<string, string> = {
   '1': '💬', '2': '🏆', '3': '🍳',
