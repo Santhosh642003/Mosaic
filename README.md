@@ -68,6 +68,19 @@ POST /api/rooms/:code/merge           GET /api/rooms/:code/merge/result|download
 GET  /api/users/me    PATCH /api/users/me    GET /api/users/me/codebases
 ```
 
+## Robustness guards
+
+| Guard | Status | Description |
+|---|---|---|
+| Structured LLM output | ✅ Implemented | `instructor` wraps Groq client; Pydantic models (`TaskDecomposition`, `MergeResult`) enforced with 3-retry validation. DeepSeek-R1 `<think>` blocks stripped before parse. |
+| Contract drift — approval flow | ✅ Implemented | Contracts are locked and displayed. Builders request changes via `request_contract_change` socket event → Lead approves/rejects → `contract_updated` broadcast refreshes all panels. Contract versions logged in DB. |
+| Post-merge AST validation | ✅ Implemented | Python files validated with `ast.parse()`, JS files with `node --check`. Failures trigger one self-correction LLM pass. Remaining errors flagged in conflict report; download still allowed. |
+
+## Roadmap (V2)
+
+- **Automatic contract renegotiation** — Detect interface contract changes inside a builder's code automatically, update the shared contract, and nudge affected AI coding sessions without requiring manual approval.
+- **Full compile + type validation** — Run `mypy` (Python) and `tsc` (TypeScript) on the merged project, execute the project in a sandboxed container, and surface type errors and runtime failures before the ZIP is generated.
+
 ## Deploy
 
 Docker Compose is production-ready. For Railway: connect repo → add Postgres + Redis plugins → set env vars → deploy.

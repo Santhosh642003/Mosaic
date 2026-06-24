@@ -108,6 +108,8 @@ class TaskResponse(BaseModel):
     files: list[str]
     exposes: list[dict[str, Any]]
     depends_on: list[dict[str, Any]]
+    contracts: list[dict[str, Any]] = []
+    contract_version: int = 1
     assigned_to: str | None
     status: str
     code: dict[str, str]

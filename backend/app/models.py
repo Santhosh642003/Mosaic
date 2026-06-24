@@ -107,7 +107,10 @@ class Task(Base):
     files: Mapped[list] = mapped_column(JSONB, server_default="[]")
     exposes: Mapped[list] = mapped_column(JSONB, server_default="[]")
     depends_on: Mapped[list] = mapped_column(JSONB, server_default="[]")
-    contracts: Mapped[dict] = mapped_column(JSONB, server_default="{}")
+    contracts: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    contract_version: Mapped[int] = mapped_column(Integer, default=1)
+    # Each entry: { version, contracts, changed_by, changed_at, reason }
+    contract_history: Mapped[list] = mapped_column(JSONB, server_default="[]")
     assigned_to: Mapped[str | None] = mapped_column(
         String, ForeignKey("room_members.id"), nullable=True
     )
