@@ -79,11 +79,30 @@ export default function MergePage() {
   useEffect(() => {
     connectSocket();
     const socket = getSocket();
-    socket.on('merge_log_stream', ({ tag, text }) => {
-      appendLog({ tag, text });
+    socket.on('merge_log_stream', (payload: Record<string, unknown>) => {
+      // Backend sends { message, tag, done } — field is "message" not "text"
+      const text = (payload.message ?? payload.text ?? '') as string;
+      const rawTag = ((payload.tag ?? 'INFO') as string).toLowerCase();
+      const tag = (rawTag === 'success' || rawTag === 'ok' ? 'ok'
+        : rawTag === 'warn' || rawTag === 'warning' ? 'warn'
+        : 'info') as 'info' | 'ok' | 'warn';
+      if (text) appendLog({ tag, text });
+
+      if (payload.done && (rawTag === 'success' || rawTag === 'error')) {
+        clearInterval(stageRef.current!);
+        clearInterval(logRef.current!);
+      }
     });
-    socket.on('merge_complete', (result) => {
-      setResult(result);
+
+    socket.on('merge_complete', (_summary: unknown) => {
+      // Backend sends a summary { merge_id, file_count, conflict_count, download_url }
+      // Fetch the full result from REST API
+      clearInterval(stageRef.current!);
+      clearInterval(logRef.current!);
+      mergeApi.result(code!).then((r) => {
+        setResult(r.data);
+        setPhase('complete');
+      }).catch(() => setPhase('complete'));
     });
     return () => {
       socket.off('merge_log_stream');

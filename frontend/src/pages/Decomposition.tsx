@@ -210,7 +210,7 @@ export default function Decomposition() {
   useEffect(() => {
     setIsDecomposing(true);
 
-    // Simulate streaming
+    // Simulate streaming while waiting for real socket events
     streamRef.current = setInterval(() => {
       setStreamIdx((i) => {
         if (i >= STREAM_MSGS.length - 1) {
@@ -221,31 +221,68 @@ export default function Decomposition() {
       });
     }, 600);
 
-    // Reveal task cards one by one
-    revealRef.current = setInterval(() => {
-      setRevealed((r) => {
-        if (r >= MOCK_TASKS.length) {
-          clearInterval(revealRef.current!);
-          setIsDecomposing(false);
-          if (tasks.length === 0) setTasks(MOCK_TASKS);
-          return r;
-        }
-        return r + 1;
-      });
-    }, 900);
-
     // Socket integration
     connectSocket();
     const socket = getSocket();
-    socket.on('decomposition_stream', ({ chunk }) => {
-      // real stream chunks would update streamIdx
-      console.log('stream chunk:', chunk);
+
+    socket.on('decomposition_stream', ({ chunk }: { chunk: string }) => {
+      if (chunk) setStreamIdx((i) => Math.min(i + 1, STREAM_MSGS.length - 1));
     });
-    socket.on('decomposition_complete', (newTasks) => {
-      setTasks(newTasks);
+
+    socket.on('decomposition_complete', (data: Record<string, unknown>) => {
+      // Backend sends { tasks: [...], room_status: "coding" }
+      const rawTasks = (Array.isArray(data) ? data : (data.tasks ?? [])) as Record<string, unknown>[];
+
+      const normalized = rawTasks.map((t) => ({
+        id: t.id as string,
+        roomId: (t.room_id ?? t.roomId ?? '') as string,
+        name: t.name as string,
+        description: t.description as string,
+        tech: (t.tech ?? '') as string,
+        complexity: (() => {
+          const c = ((t.complexity ?? 'medium') as string);
+          return (c.charAt(0).toUpperCase() + c.slice(1)) as 'Low' | 'Medium' | 'High';
+        })(),
+        color: (t.color ?? '#4F8EF7') as string,
+        files: (t.files ?? []) as string[],
+        exposes: ((t.exposes ?? []) as Record<string, string>[]).map((e) => ({
+          signature: (e.name ?? e.signature ?? '') as string,
+          description: (e.description ?? '') as string,
+        })),
+        dependsOn: ((t.depends_on ?? t.dependsOn ?? []) as Record<string, string>[]).map((d) => ({
+          signature: (d.name ?? d.signature ?? '') as string,
+          taskId: (d.provided_by ?? d.taskId ?? '') as string,
+        })),
+        assignedTo: (t.assigned_to ?? t.assignedTo) as string | undefined,
+        status: (t.status ?? 'unassigned') as 'unassigned' | 'in_progress' | 'done',
+        code: (t.code ?? {}) as Record<string, string>,
+      }));
+
+      clearInterval(streamRef.current!);
+      clearInterval(revealRef.current!);
+      setTasks(normalized);
       setIsDecomposing(false);
-      setRevealed(newTasks.length);
+      setRevealed(normalized.length);
     });
+
+    // If real tasks already loaded (page refresh), show them immediately
+    if (tasks.length > 0) {
+      clearInterval(streamRef.current!);
+      setIsDecomposing(false);
+      setRevealed(tasks.length);
+    } else {
+      // Reveal mock cards as placeholders while real decomp runs
+      revealRef.current = setInterval(() => {
+        setRevealed((r) => {
+          if (r >= MOCK_TASKS.length) {
+            clearInterval(revealRef.current!);
+            setIsDecomposing(false);
+            return r;
+          }
+          return r + 1;
+        });
+      }, 900);
+    }
 
     return () => {
       clearInterval(streamRef.current!);
@@ -253,7 +290,8 @@ export default function Decomposition() {
       socket.off('decomposition_stream');
       socket.off('decomposition_complete');
     };
-  }, [setIsDecomposing, setTasks, tasks.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAssign = async (taskId: string) => {
     if (!code) return;

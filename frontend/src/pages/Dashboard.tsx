@@ -50,11 +50,11 @@ export default function Dashboard() {
   useEffect(() => {
     roomsApi.list()
       .then((r) => setRooms(r.data))
-      .catch(() => setRooms(MOCK_ROOMS))
+      .catch(() => {/* leave empty on error */})
       .finally(() => setIsLoading(false));
   }, []);
 
-  const displayRooms = rooms.length > 0 ? rooms : MOCK_ROOMS;
+  const displayRooms = rooms;
   const isEmpty = !isLoading && displayRooms.length === 0;
 
   return (

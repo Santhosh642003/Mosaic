@@ -111,13 +111,20 @@ export default function CodingSession() {
   const { chatMessages, addChatMessage, appendChatChunk, finalizeChatStream, isChatStreaming, setIsChatStreaming } = useTaskStore();
   const { members } = useRoomStore();
 
-  const [activeFile, setActiveFile] = useState('messages.py');
+  // Derive files from real task, fall back to mock for demo
+  const taskFiles = myTask?.files?.length
+    ? myTask.files.map((name) => ({ name, lang: name.endsWith('.py') ? 'python' : name.endsWith('.ts') || name.endsWith('.tsx') ? 'typescript' : 'javascript', active: false }))
+    : MOCK_FILES;
+
+  const [activeFile, setActiveFile] = useState(taskFiles[0]?.name ?? 'messages.py');
+  const [editorCode, setEditorCode] = useState<Record<string, string>>(myTask?.code ?? {});
   const [isBlocked, setIsBlocked] = useState(false);
   const [input, setInput] = useState('');
-  const [timer, setTimer] = useState(8 * 3600 - 42 * 60); // 7h18m
+  const [timer, setTimer] = useState(8 * 3600 - 42 * 60);
   const [isMarking, setIsMarking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const currentCode = editorCode[activeFile] ?? (myTask ? '' : MOCK_CODE);
   const displayMessages = chatMessages.length > 0 ? chatMessages : INITIAL_MESSAGES;
 
   useEffect(() => {
@@ -194,7 +201,8 @@ export default function CodingSession() {
 
   const handleMarkDone = async () => {
     setIsMarking(true);
-    emit('submit_task', { taskId: myTask?.id ?? 't2', code: { [activeFile]: MOCK_CODE } });
+    const submitCode = Object.keys(editorCode).length > 0 ? editorCode : { [activeFile]: currentCode };
+    emit('submit_task', { taskId: myTask?.id ?? '', code: submitCode });
     setTimeout(() => navigate(`/rooms/${code}/merge`), 600);
   };
 
@@ -261,12 +269,12 @@ export default function CodingSession() {
             {/* Task card */}
             <div className="p-3 border-b border-ms-subtle">
               <div className="flex items-center gap-1.5 mb-1">
-                <span className="w-2 h-2 rounded-full bg-ms-green" />
+                <span className="w-2 h-2 rounded-full" style={{ background: myTask?.color ?? '#3FB950' }} />
                 <span className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3">Your task</span>
               </div>
-              <div className="text-sm font-bold text-ms-fg">Message API</div>
+              <div className="text-sm font-bold text-ms-fg">{myTask?.name ?? 'Task'}</div>
               <div className="text-[11px] text-ms-fg3 mt-1 leading-relaxed">
-                REST endpoints for messages with PostgreSQL storage and pagination.
+                {myTask?.description ?? 'Code your assigned task.'}
               </div>
             </div>
 
@@ -337,7 +345,7 @@ export default function CodingSession() {
           <div className="flex-1 flex flex-col min-w-0 bg-ms-deep">
             {/* Tab bar */}
             <div className="flex-none flex items-center border-b border-ms-subtle bg-ms-surface h-9">
-              {MOCK_FILES.map((f) => (
+              {taskFiles.map((f) => (
                 <button
                   key={f.name}
                   onClick={() => setActiveFile(f.name)}
@@ -364,8 +372,9 @@ export default function CodingSession() {
               >
                 <MonacoEditor
                   height="100%"
-                  language="python"
-                  value={MOCK_CODE}
+                  language={taskFiles.find((f) => f.name === activeFile)?.lang ?? 'python'}
+                  value={currentCode}
+                  onChange={(val) => setEditorCode((prev) => ({ ...prev, [activeFile]: val ?? '' }))}
                   theme="vs-dark"
                   options={{
                     fontSize: 13,
