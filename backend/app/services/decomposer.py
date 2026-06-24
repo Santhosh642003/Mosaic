@@ -21,6 +21,7 @@ async def run_decomposition(
     brief: str,
     language: list[str],
     max_tasks: int,
+    members: list[dict] | None = None,
 ) -> None:
     """Run decomposition, stream progress, persist tasks, emit completion."""
     try:
@@ -31,7 +32,7 @@ async def run_decomposition(
         )
 
         try:
-            decomposition = await decompose_brief(brief, language, max_tasks)
+            decomposition = await decompose_brief(brief, language, max_tasks, members)
         except ValueError as exc:
             logger.error("Decomposition structured output failed: %s", exc)
             await sio.emit(
@@ -79,6 +80,7 @@ async def run_decomposition(
                     contracts=exposes,  # contracts = exposed interfaces at creation time
                     contract_version=1,
                     contract_history=[],
+                    suggested_assignee=(t.suggested_assignee or None),
                     status="unassigned",
                     code={},
                 )
@@ -101,6 +103,7 @@ async def run_decomposition(
                     "depends_on": t.depends_on,
                     "contracts": t.contracts,
                     "contract_version": t.contract_version,
+                    "suggested_assignee": t.suggested_assignee,
                     "status": t.status,
                 }
                 for t in tasks

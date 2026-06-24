@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight } from 'lucide-react';
 import { MosaicLogo } from '@/components/shared/MosaicLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { RoomCodeInput } from '@/components/shared/RoomCodeDisplay';
 import { useRoomStore } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
@@ -25,6 +26,7 @@ export default function JoinRoom() {
 
   const [code, setCode] = useState(urlCode?.toUpperCase() ?? '');
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
+  const [skills, setSkills] = useState('');
   const [joinError, setJoinError] = useState<JoinError>(null);
   const [joinErrorMsg, setJoinErrorMsg] = useState('');
   const [shaking, setShaking] = useState(false);
@@ -44,7 +46,7 @@ export default function JoinRoom() {
 
     setJoinError(null);
     try {
-      await joinRoom(code, user ? undefined : displayName);
+      await joinRoom(code, user ? undefined : displayName, skills.trim() || undefined);
       navigate(`/rooms/${code}/lobby`);
     } catch (err) {
       const msg = (err as Error).message.toLowerCase();
@@ -100,6 +102,15 @@ export default function JoinRoom() {
               hint="Guest — no account needed"
             />
           )}
+
+          <Textarea
+            label="Your skills"
+            placeholder="e.g. React & TypeScript frontend, comfortable with Postgres and API design"
+            value={skills}
+            onChange={(e) => setSkills(e.target.value)}
+            className="min-h-[72px]"
+            hint="The AI uses this to suggest which task fits you best"
+          />
 
           {joinError && (
             <div className="flex items-start gap-2 text-sm text-ms-red bg-ms-red/10 border border-ms-red/30 rounded-lg p-3">

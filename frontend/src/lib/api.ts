@@ -78,16 +78,20 @@ export const auth = {
 // ── Rooms ──────────────────────────────────────────────────────────────────────
 
 export const rooms = {
-  create: (body: { name: string; brief: string; language: string[]; maxTeammates: number }) =>
+  create: (body: { name: string; brief: string; language: string[]; maxTeammates: number; skills?: string }) =>
     client.post<Room>('/rooms', {
       name: body.name,
       brief: body.brief,
       language: body.language,
       max_teammates: body.maxTeammates,
+      skills: body.skills ?? null,
     }),
 
-  join: (code: string, displayName?: string) =>
-    client.post<RoomMember>(`/rooms/${code}/join`, { display_name: displayName ?? null }),
+  join: (code: string, displayName?: string, skills?: string) =>
+    client.post<RoomMember>(`/rooms/${code}/join`, {
+      display_name: displayName ?? null,
+      skills: skills ?? null,
+    }),
 
   get: (code: string) => client.get<Room>(`/rooms/${code}`),
 

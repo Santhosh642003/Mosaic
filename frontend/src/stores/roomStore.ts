@@ -16,8 +16,8 @@ interface RoomState {
   addMember: (member: RoomMember) => void;
   setMyMemberId: (id: string) => void;
   fetchRoom: (code: string) => Promise<void>;
-  joinRoom: (code: string, displayName?: string) => Promise<RoomMember>;
-  createRoom: (name: string, brief: string, language: string[], maxTeammates: number) => Promise<Room>;
+  joinRoom: (code: string, displayName?: string, skills?: string) => Promise<RoomMember>;
+  createRoom: (name: string, brief: string, language: string[], maxTeammates: number, skills?: string) => Promise<Room>;
   reset: () => void;
 }
 
@@ -66,10 +66,10 @@ export const useRoomStore = create<RoomState>()((set, _get) => ({
     }
   },
 
-  joinRoom: async (code, displayName) => {
+  joinRoom: async (code, displayName, skills) => {
     set({ isLoading: true, error: null });
     try {
-      const { data: member } = await roomsApi.join(code, displayName);
+      const { data: member } = await roomsApi.join(code, displayName, skills);
       set({ myMemberId: member.id });
       return member;
     } catch (err) {
@@ -80,10 +80,10 @@ export const useRoomStore = create<RoomState>()((set, _get) => ({
     }
   },
 
-  createRoom: async (name, brief, language, maxTeammates) => {
+  createRoom: async (name, brief, language, maxTeammates, skills) => {
     set({ isLoading: true, error: null });
     try {
-      const { data: room } = await roomsApi.create({ name, brief, language, maxTeammates });
+      const { data: room } = await roomsApi.create({ name, brief, language, maxTeammates, skills });
       set({ room });
       return room;
     } catch (err) {

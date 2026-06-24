@@ -49,6 +49,7 @@ export interface RoomMember {
   role: MemberRole;
   taskId?: string;
   status: MemberStatus;
+  skills?: string;
   isGuest: boolean;
 }
 
@@ -80,6 +81,7 @@ export interface Task {
   dependsOn: Contract[];
   assignedTo?: string;
   assigneeName?: string;
+  suggestedAssignee?: string;
   status: TaskStatus;
   complexity: Complexity;
   color: string;

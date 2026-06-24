@@ -101,6 +101,7 @@ async def handle_join_room(sid: str, data: dict) -> None:
                             "display_name": m.display_name,
                             "role": m.role,
                             "status": m.status,
+                            "skills": m.skills,
                             "is_guest": m.is_guest,
                         }
                         for m in room.members
@@ -224,11 +225,22 @@ async def handle_trigger_decomposition(sid: str, data: dict) -> None:
         max_teammates = room.max_teammates
         room_id = room.id
 
+        # Snapshot the roster (name + skills) to drive AI assignment suggestions
+        members_result = await db.execute(
+            select(RoomMember).where(RoomMember.room_id == room.id)
+        )
+        members = [
+            {"display_name": m.display_name, "skills": m.skills}
+            for m in members_result.scalars().all()
+        ]
+
     logger.info("decomposition triggered for room %s", room_code)
 
     from app.services.decomposer import run_decomposition
     import asyncio
-    asyncio.create_task(run_decomposition(room_id, room_code, brief, language, max_teammates))
+    asyncio.create_task(
+        run_decomposition(room_id, room_code, brief, language, max_teammates, members)
+    )
 
 
 # ── trigger_merge ──────────────────────────────────────────────────────────────

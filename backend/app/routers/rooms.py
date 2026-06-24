@@ -76,6 +76,7 @@ async def create_room(
         display_name=user.display_name,
         role="lead",
         status="waiting",
+        skills=body.skills,
         is_guest=False,
     )
     db.add(member)
@@ -93,6 +94,7 @@ async def create_room(
                 "display_name": user.display_name,
                 "role": "lead",
                 "status": "waiting",
+                "skills": body.skills,
                 "is_guest": False,
             }
         },
@@ -144,6 +146,7 @@ async def join_room(
         display_name=display_name,
         role="member",
         status="waiting",
+        skills=body.skills,
         is_guest=is_guest,
     )
     db.add(member)
@@ -159,6 +162,7 @@ async def join_room(
             "display_name": display_name,
             "role": "member",
             "status": "waiting",
+            "skills": body.skills,
             "is_guest": is_guest,
         }
         await redis.setex(ROOM_STATE_KEY.format(code=code), ROOM_TTL, json.dumps(state))

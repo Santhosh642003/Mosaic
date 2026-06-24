@@ -84,6 +84,7 @@ class RoomMember(Base):
     )
     status: Mapped[str] = mapped_column(String, default="waiting")
     # waiting | coding | blocked | done
+    skills: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_guest: Mapped[bool] = mapped_column(Boolean, default=False)
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -115,6 +116,7 @@ class Task(Base):
     assigned_to: Mapped[str | None] = mapped_column(
         String, ForeignKey("room_members.id"), nullable=True
     )
+    suggested_assignee: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="unassigned")
     # unassigned | in_progress | done
     code: Mapped[dict] = mapped_column(JSONB, server_default="{}")

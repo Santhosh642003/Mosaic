@@ -169,27 +169,50 @@ async def _structured_complete(
 # ── Public API ────────────────────────────────────────────────────────────────
 
 async def decompose_brief(
-    brief: str, language: list[str], max_tasks: int
+    brief: str,
+    language: list[str],
+    max_tasks: int,
+    members: list[dict] | None = None,
 ) -> TaskDecomposition:
     """
     Call DeepSeek-R1 to decompose a project brief into parallelizable tasks.
-    Returns a validated TaskDecomposition (Guard 1).
+    When a team roster (name + skills) is provided, the model also suggests
+    which member best fits each task. Returns a validated TaskDecomposition
+    (Guard 1).
     """
     lang_str = ", ".join(language) if language else "any"
     system = (
         "You are a senior software architect. Your job is to break down a project brief "
         "into parallelizable coding tasks for a hackathon team. Each task must be "
         "independently implementable with clear interface contracts.\n\n"
+        "If a team roster is provided, set each task's suggested_assignee to the name "
+        "of the member whose stated skills best match that task. Use a member's exact "
+        "name, balance the workload so everyone gets work, and leave suggested_assignee "
+        'empty ("") only if no member fits.\n\n'
         "Respond ONLY with valid JSON — no markdown fences, no explanation.\n"
         'Schema: { "tasks": [ { "name": str, "description": str, "tech": str, '
         '"complexity": "low"|"medium"|"high", "color": str (hex), '
         '"files": [str], "exposes": [{"name": str, "type": str, "description": str}], '
-        '"depends_on": [{"name": str, "provided_by": str}] } ] }'
+        '"depends_on": [{"name": str, "provided_by": str}], '
+        '"suggested_assignee": str } ] }'
     )
+
+    roster = ""
+    if members:
+        lines = [
+            f"- {m['display_name']}: {m.get('skills') or 'no skills listed'}"
+            for m in members
+        ]
+        roster = (
+            "\n\nTeam roster (assign tasks to fit these members' skills):\n"
+            + "\n".join(lines)
+        )
+
     user = (
         f"Project brief: {brief}\n\n"
         f"Tech stack: {lang_str}\n"
-        f"Max tasks: {max_tasks}\n\n"
+        f"Max tasks: {max_tasks}"
+        f"{roster}\n\n"
         f"Create {max_tasks} or fewer distinct, parallelizable tasks. "
         "Assign each a unique hex color from: "
         "#4F8EF7, #3FB950, #A371F7, #D29922, #F85149, #58A6FF."

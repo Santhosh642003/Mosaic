@@ -24,6 +24,7 @@ export default function CreateRoom() {
   const [step, setStep] = useState<'form' | 'done'>('form');
   const [name, setName] = useState('');
   const [brief, setBrief] = useState('');
+  const [skills, setSkills] = useState('');
   const [selectedFW, setSelectedFW] = useState<string[]>(['React', 'FastAPI', 'PostgreSQL']);
   const [maxTeam, setMaxTeam] = useState(4);
   const [roomCode, setRoomCode] = useState('');
@@ -38,7 +39,7 @@ export default function CreateRoom() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const room = await createRoom(name, brief, selectedFW, maxTeam);
+      const room = await createRoom(name, brief, selectedFW, maxTeam, skills.trim() || undefined);
       setRoomCode(room.code);
       setStep('done');
     } catch {
@@ -89,6 +90,15 @@ export default function CreateRoom() {
                 onChange={(e) => setBrief(e.target.value)}
                 className="min-h-[120px]"
                 required
+              />
+
+              <Textarea
+                label="Your skills"
+                placeholder="e.g. Backend & infra — FastAPI, Postgres, Redis, Docker. Less comfortable with CSS."
+                value={skills}
+                onChange={(e) => setSkills(e.target.value)}
+                className="min-h-[80px]"
+                hint="The AI uses everyone's skills to suggest who should take which task"
               />
 
               {/* Framework chips */}

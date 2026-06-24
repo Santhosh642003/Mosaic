@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Download, Share2, CheckCircle, Circle, Loader2, FileText, GitMerge, AlertTriangle, ExternalLink, Github } from 'lucide-react';
-import { MosaicLogo } from '@/components/shared/MosaicLogo';
+import { RoomHeader } from '@/components/shared/RoomHeader';
 import { Button } from '@/components/ui/button';
 import { useMergeStore } from '@/stores/mergeStore';
 import { useRoomStore } from '@/stores/roomStore';
@@ -195,20 +195,13 @@ export default function MergePage() {
   return (
     <div className="min-h-screen bg-ms-base">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 h-14 border-b border-ms-subtle bg-ms-surface/90 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto h-full px-6 flex items-center gap-4">
-          <MosaicLogo />
-          <span className="text-ms-fg3">/</span>
-          <span className="font-semibold">{room?.name ?? 'PingChat'}</span>
-          <span className="text-ms-fg3">/</span>
-          <span className="text-ms-fg2 text-sm">Merge</span>
-          {phase === 'complete' && (
-            <span className="ml-2 text-[10px] font-bold text-ms-green border border-ms-green/30 bg-ms-green/10 rounded px-2 py-0.5 uppercase tracking-wider">
-              Complete
-            </span>
-          )}
-        </div>
-      </header>
+      <RoomHeader roomName={room?.name} code={code} crumb="Merge" live={false}>
+        {phase === 'complete' && (
+          <span className="text-[10px] font-bold text-ms-green border border-ms-green/30 bg-ms-green/10 rounded px-2 py-0.5 uppercase tracking-wider">
+            Complete
+          </span>
+        )}
+      </RoomHeader>
 
       <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-[1fr_300px] gap-8">
         {/* Main */}

@@ -82,10 +82,12 @@ class CreateRoomRequest(BaseModel):
     brief: str
     language: list[str] = []
     max_teammates: int = 4
+    skills: str | None = None  # the lead's own skills
 
 
 class JoinRoomRequest(BaseModel):
     display_name: str | None = None
+    skills: str | None = None
 
 
 class RoomResponse(BaseModel):
@@ -111,6 +113,7 @@ class MemberResponse(BaseModel):
     role: str
     task_id: str | None
     status: str
+    skills: str | None = None
     is_guest: bool
 
     model_config = {"from_attributes": True}
@@ -154,6 +157,7 @@ class TaskResponse(BaseModel):
     contracts: list[dict[str, Any]] = []
     contract_version: int = 1
     assigned_to: str | None
+    suggested_assignee: str | None = None
     status: str
     code: dict[str, str]
 

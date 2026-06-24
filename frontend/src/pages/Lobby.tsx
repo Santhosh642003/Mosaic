@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Users, ArrowRight, Wifi } from 'lucide-react';
-import { MosaicLogo } from '@/components/shared/MosaicLogo';
+import { Users, ArrowRight } from 'lucide-react';
 import { Avatar } from '@/components/shared/Avatar';
 import { Button } from '@/components/ui/button';
 import { RoomCodeDisplay } from '@/components/shared/RoomCodeDisplay';
+import { RoomHeader } from '@/components/shared/RoomHeader';
 import { useRoomStore } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
 import { connectSocket, getSocket } from '@/lib/socket';
@@ -92,18 +92,7 @@ export default function Lobby() {
 
   return (
     <div className="min-h-screen bg-ms-base">
-      <header className="sticky top-0 z-40 h-14 border-b border-ms-subtle bg-ms-surface/90 backdrop-blur-sm">
-        <div className="max-w-5xl mx-auto h-full px-6 flex items-center gap-4">
-          <MosaicLogo />
-          <span className="text-ms-fg3">/</span>
-          <span className="font-semibold">{roomName || '…'}</span>
-          <span className="font-mono text-xs text-ms-fg3">#{code}</span>
-          <div className="ml-auto flex items-center gap-1.5 text-ms-green text-xs font-semibold">
-            <Wifi size={12} />
-            Live
-          </div>
-        </div>
-      </header>
+      <RoomHeader roomName={roomName} code={code} crumb="Lobby" />
 
       <div className="max-w-5xl mx-auto px-6 py-10 grid md:grid-cols-[1fr_300px] gap-8">
         {/* Main */}
@@ -157,9 +146,11 @@ export default function Lobby() {
                           </span>
                         )}
                       </div>
-                      {member.isGuest && (
+                      {member.skills ? (
+                        <p className="text-xs text-ms-fg3 mt-0.5 line-clamp-2">{member.skills}</p>
+                      ) : member.isGuest ? (
                         <span className="text-xs text-ms-fg3">Guest</span>
-                      )}
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-ms-green font-semibold">
                       <span className="w-1.5 h-1.5 rounded-full bg-ms-green animate-ms-pulse" />

@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronRight, Lock, ArrowRight, Cpu } from 'lucide-react';
-import { MosaicLogo } from '@/components/shared/MosaicLogo';
+import { ChevronRight, Lock, ArrowRight, Cpu, Sparkles } from 'lucide-react';
 import { Avatar } from '@/components/shared/Avatar';
+import { RoomHeader } from '@/components/shared/RoomHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useTaskStore } from '@/stores/taskStore';
 import { useRoomStore } from '@/stores/roomStore';
+import { useUser } from '@/stores/authStore';
 import { getSocket, connectSocket } from '@/lib/socket';
+import { cn } from '@/lib/utils';
 
 import type { Task } from '@/types';
 
@@ -92,11 +94,14 @@ const COMPLEXITY_BADGE: Record<string, 'green' | 'amber' | 'red'> = {
   Low: 'green', Medium: 'amber', High: 'red',
 };
 
-function TaskCard({ task, index, onAssign, myAssignment }: {
-  task: Task; index: number; onAssign: (id: string) => void; myAssignment: string | null;
+function TaskCard({ task, index, onAssign, myAssignment, myName }: {
+  task: Task; index: number; onAssign: (id: string) => void; myAssignment: string | null; myName?: string;
 }) {
   const isAssigned = !!task.assignedTo;
   const isMyTask = task.id === myAssignment;
+  const suggestedForMe =
+    !!task.suggestedAssignee && !!myName &&
+    task.suggestedAssignee.trim().toLowerCase() === myName.trim().toLowerCase();
 
   return (
     <div
@@ -167,6 +172,22 @@ function TaskCard({ task, index, onAssign, myAssignment }: {
           </div>
         )}
 
+        {/* AI suggestion (only while unassigned) */}
+        {!isAssigned && task.suggestedAssignee && (
+          <div className={cn(
+            'flex items-center gap-1.5 mb-3 text-[11px] rounded-md px-2 py-1.5 border',
+            suggestedForMe
+              ? 'text-ms-blue border-ms-blue/30 bg-ms-blue/10'
+              : 'text-ms-fg3 border-ms-subtle bg-ms-deep'
+          )}>
+            <Sparkles size={11} className="flex-none" />
+            <span>
+              AI suggests <span className="font-semibold">{task.suggestedAssignee}</span>
+              {suggestedForMe && ' — that\'s you'}
+            </span>
+          </div>
+        )}
+
         {/* Assignment */}
         <div className="flex items-center justify-between pt-3 border-t border-ms-subtle">
           {isAssigned ? (
@@ -184,7 +205,11 @@ function TaskCard({ task, index, onAssign, myAssignment }: {
           )}
 
           {!isMyTask && !isAssigned && (
-            <Button size="sm" variant="ghost" onClick={() => onAssign(task.id)}>
+            <Button
+              size="sm"
+              variant={suggestedForMe ? 'primary' : 'ghost'}
+              onClick={() => onAssign(task.id)}
+            >
               Assign to me
             </Button>
           )}
@@ -198,7 +223,13 @@ export default function Decomposition() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { tasks, setTasks, assignTask, myTaskId, setIsDecomposing, isDecomposing } = useTaskStore();
-  const { room } = useRoomStore();
+  const { room, members, myMemberId } = useRoomStore();
+  const user = useUser();
+
+  // My display name — from the room member record (works for guests) or the
+  // authenticated user. Used to highlight tasks the AI suggested for me.
+  const myName =
+    members.find((m) => m.id === myMemberId)?.displayName ?? user?.displayName;
 
   const [revealed, setRevealed] = useState(0);
   const [streamIdx, setStreamIdx] = useState(0);
@@ -255,6 +286,7 @@ export default function Decomposition() {
           taskId: (d.provided_by ?? d.taskId ?? '') as string,
         })),
         assignedTo: (t.assigned_to ?? t.assignedTo) as string | undefined,
+        suggestedAssignee: (t.suggested_assignee ?? t.suggestedAssignee) as string | undefined,
         status: (t.status ?? 'unassigned') as 'unassigned' | 'in_progress' | 'done',
         code: (t.code ?? {}) as Record<string, string>,
       }));
@@ -310,15 +342,7 @@ export default function Decomposition() {
   return (
     <div className="min-h-screen bg-ms-base">
       {/* Top bar */}
-      <header className="sticky top-0 z-40 h-14 border-b border-ms-subtle bg-ms-surface/90 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto h-full px-6 flex items-center gap-4">
-          <MosaicLogo />
-          <span className="text-ms-fg3">/</span>
-          <span className="font-semibold">{room?.name ?? 'PingChat'}</span>
-          <span className="text-ms-fg3">/</span>
-          <span className="text-ms-fg2 text-sm">Decomposition</span>
-        </div>
-      </header>
+      <RoomHeader roomName={room?.name} code={code} crumb="Decomposition" />
 
       <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-[1fr_300px] gap-8">
         {/* Main */}
@@ -354,6 +378,7 @@ export default function Decomposition() {
                 index={i}
                 onAssign={handleAssign}
                 myAssignment={myTaskId}
+                myName={myName}
               />
             ))}
           </div>

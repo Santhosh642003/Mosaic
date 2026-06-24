@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, Check, ChevronRight, Send, Zap, Shield, TestTube, BookOpen, Clock } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Send, Zap, Shield, TestTube, BookOpen, Clock, LogOut } from 'lucide-react';
 import { MosaicLogo } from '@/components/shared/MosaicLogo';
 import { Avatar } from '@/components/shared/Avatar';
 import { Button } from '@/components/ui/button';
 import { useTaskStore, useMyTask } from '@/stores/taskStore';
 import { useRoomStore, useRoom } from '@/stores/roomStore';
-import { getSocket, connectSocket, emit } from '@/lib/socket';
+import { useUser } from '@/stores/authStore';
+import { getSocket, connectSocket, disconnectSocket, emit } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/types';
 
@@ -90,8 +91,16 @@ export default function CodingSession() {
   const navigate = useNavigate();
   const myTask = useMyTask();
   const room = useRoom();
-  const { chatMessages, addChatMessage, appendChatChunk, finalizeChatStream, isChatStreaming, setIsChatStreaming } = useTaskStore();
-  const { members, myMemberId } = useRoomStore();
+  const user = useUser();
+  const { chatMessages, addChatMessage, appendChatChunk, finalizeChatStream, isChatStreaming, setIsChatStreaming, reset: resetTasks } = useTaskStore();
+  const { members, myMemberId, reset: resetRoom } = useRoomStore();
+
+  const handleLeave = () => {
+    disconnectSocket();
+    resetRoom();
+    resetTasks();
+    navigate(user ? '/dashboard' : '/');
+  };
 
   const taskFiles = myTask?.files?.length
     ? myTask.files.map((name) => ({
@@ -237,6 +246,12 @@ export default function CodingSession() {
               <Clock size={12} />
               {formatTimer(timer)}
             </div>
+            <button
+              onClick={handleLeave}
+              className="flex items-center gap-1.5 text-xs font-semibold text-ms-fg3 hover:text-ms-red transition-colors"
+            >
+              <LogOut size={13} /> Leave
+            </button>
             <Button
               size="sm"
               className="bg-ms-green hover:bg-[#56d364] text-white"

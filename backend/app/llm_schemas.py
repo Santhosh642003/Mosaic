@@ -29,6 +29,9 @@ class TaskItem(BaseModel):
     files: list[str] = Field(default_factory=list)
     exposes: list[ExposedInterface] = Field(default_factory=list)
     depends_on: list[DependencyRef] = Field(default_factory=list)
+    # Name of the team member best suited to this task, chosen from the
+    # provided roster based on their stated skills. Empty if no clear match.
+    suggested_assignee: str = ""
 
 
 class TaskDecomposition(BaseModel):
