@@ -15,7 +15,7 @@ mgr = socketio.AsyncRedisManager(settings.redis_url)
 sio = socketio.AsyncServer(
     async_mode="asgi",
     client_manager=mgr,
-    cors_allowed_origins=[settings.frontend_url, "http://localhost:5173"],
+    cors_allowed_origins="*",
     logger=False,
     engineio_logger=False,
 )

@@ -178,10 +178,11 @@ async def get_room_state(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
+    from app.schemas import TaskResponse
     return RoomStateResponse(
         room=RoomResponse.model_validate(room),
         members=[MemberResponse.model_validate(m) for m in room.members],
-        tasks=[],
+        tasks=[TaskResponse.model_validate(t) for t in room.tasks],
     )
 
 

@@ -3,7 +3,27 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, computed_field, field_validator
+
+
+def _initials(name: str) -> str:
+    parts = name.strip().split()
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+_AVATAR_PALETTE = [
+    "#4F8EF7", "#A371F7", "#3FB950", "#D29922",
+    "#F78166", "#58A6FF", "#56D364", "#E3B341",
+]
+
+
+def _avatar_color(name: str) -> str:
+    h = sum(ord(c) for c in name)
+    return _AVATAR_PALETTE[h % len(_AVATAR_PALETTE)]
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -94,6 +114,16 @@ class MemberResponse(BaseModel):
     is_guest: bool
 
     model_config = {"from_attributes": True}
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def initials(self) -> str:
+        return _initials(self.display_name)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def avatar_color(self) -> str:
+        return _avatar_color(self.display_name)
 
 
 class RoomStateResponse(BaseModel):

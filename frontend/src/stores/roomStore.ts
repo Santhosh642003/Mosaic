@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Room, RoomMember, MemberStatus } from '@/types';
 import { rooms as roomsApi } from '@/lib/api';
+import { initials as toInitials, avatarColor } from '@/lib/utils';
 
 interface RoomState {
   room: Room | null;
@@ -52,7 +53,12 @@ export const useRoomStore = create<RoomState>()((set, _get) => ({
     set({ isLoading: true, error: null });
     try {
       const { data } = await roomsApi.state(code);
-      set({ room: data.room, members: data.members });
+      const members: RoomMember[] = data.members.map((m) => ({
+        ...m,
+        initials: m.initials ?? toInitials(m.displayName),
+        avatarColor: m.avatarColor ?? avatarColor(m.displayName),
+      }));
+      set({ room: data.room, members });
     } catch (err) {
       set({ error: (err as Error).message });
     } finally {

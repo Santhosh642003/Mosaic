@@ -9,9 +9,9 @@ import { useRoomStore } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
 
-type JoinError = 'invalid' | 'full' | 'closed' | null;
+type JoinError = 'invalid' | 'full' | 'closed' | 'other' | null;
 
-const ERROR_MSGS: Record<NonNullable<JoinError>, string> = {
+const ERROR_MSGS: Record<NonNullable<Exclude<JoinError, 'other'>>, string> = {
   invalid: 'No room found with that code. Check for typos and try again.',
   full: 'That room is full. Ask the team lead to increase the limit.',
   closed: 'That room has ended and is no longer accepting members.',
@@ -26,6 +26,7 @@ export default function JoinRoom() {
   const [code, setCode] = useState(urlCode?.toUpperCase() ?? '');
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [joinError, setJoinError] = useState<JoinError>(null);
+  const [joinErrorMsg, setJoinErrorMsg] = useState('');
   const [shaking, setShaking] = useState(false);
 
   useEffect(() => {
@@ -54,7 +55,8 @@ export default function JoinRoom() {
       } else if (msg.includes('closed') || msg.includes('ended')) {
         setJoinError('closed');
       } else {
-        setJoinError('invalid');
+        setJoinError('other');
+        setJoinErrorMsg((err as Error).message);
       }
       triggerShake();
     }
@@ -83,7 +85,7 @@ export default function JoinRoom() {
             </label>
             <RoomCodeInput
               value={code}
-              onChange={(v) => { setCode(v); setJoinError(null); }}
+              onChange={(v) => { setCode(v); setJoinError(null); setJoinErrorMsg(''); }}
               error={!!joinError}
             />
           </div>
@@ -102,7 +104,7 @@ export default function JoinRoom() {
           {joinError && (
             <div className="flex items-start gap-2 text-sm text-ms-red bg-ms-red/10 border border-ms-red/30 rounded-lg p-3">
               <AlertCircle size={14} className="mt-0.5 flex-none" />
-              <p>{ERROR_MSGS[joinError]}</p>
+              <p>{joinError === 'other' ? joinErrorMsg : ERROR_MSGS[joinError]}</p>
             </div>
           )}
 
