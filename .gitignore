@@ -15,9 +15,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-# Python venv lib dirs (use scoped patterns to avoid blocking frontend/src/lib)
-!frontend/src/lib/
-lib/
 lib64/
 parts/
 sdist/
