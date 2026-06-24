@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:#0D1117; }
+  ::selection { background: rgba(79,142,247,0.30); }
+  @keyframes mb-rise { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes mb-pop { from{opacity:0; transform:scale(.96);} to{opacity:1; transform:scale(1);} }
+  .mb-inp:focus-within { border-color:#4F8EF7 !important; box-shadow:0 0 0 3px rgba(79,142,247,0.15); }
+  .mb-primary:hover { background:#6BA0F8 !important; }
+  .mb-chip:hover { border-color:#4F8EF7 !important; }
+  .mb-scrn:hover { background:#21262D !important; color:#E6EDF3 !important; }
+  .mb-step:hover { background:#21262D !important; }
+</style>
+</helmet>
+<div style="min-height:100vh; font-family:'Inter',system-ui,sans-serif; color:#E6EDF3; background:#0D1117;">
+
+  <div style="height:56px; display:flex; align-items:center; padding:0 26px; gap:16px; border-bottom:1px solid #21262D; background:#161B22; position:sticky; top:0; z-index:40;">
+    <a href="Mosaic Dashboard.dc.html" style="display:flex; align-items:center; gap:9px; text-decoration:none; color:#E6EDF3;">
+      <div style="display:grid; grid-template-columns:repeat(3,6px); grid-template-rows:repeat(3,6px); gap:2px;"><div style="background:#4F8EF7;"></div><div style="background:#2D4A77;"></div><div style="background:#4F8EF7;"></div><div style="background:#2D4A77;"></div><div style="background:#4F8EF7;"></div><div style="background:#3FB950;"></div><div style="background:#4F8EF7;"></div><div style="background:#3FB950;"></div><div style="background:#2D4A77;"></div></div>
+      <span style="font-weight:700; font-size:16px;">Mosaic</span>
+    </a>
+    <span style="color:#484F58;">/</span>
+    <span style="font-size:14px; color:#7D8590;">New room</span>
+  </div>
+
+  <div style="max-width:620px; margin:0 auto; padding:38px 26px 80px;">
+
+    <sc-if value="{{ isForm }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <h1 style="font-size:28px; font-weight:800; letter-spacing:-0.03em; margin:0 0 6px;">Create a room</h1>
+        <p style="font-size:14px; color:#7D8590; margin:0 0 30px;">Describe what you're building. Mosaic will split it into parallel tasks once your team is in.</p>
+
+        <div style="display:flex; flex-direction:column; gap:22px;">
+          <!-- room name -->
+          <div>
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:8px;">Room name</label>
+            <div class="mb-inp" style="display:flex; align-items:center; border:1px solid #30363D; border-radius:9px; background:#161B22; padding:0 14px; transition:all .15s;"><input value="PingChat" style="flex:1; background:none; border:none; outline:none; color:#E6EDF3; font-family:'Inter',sans-serif; font-size:14px; padding:12px 0;" /></div>
+          </div>
+
+          <!-- brief -->
+          <div>
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:8px;">Project brief</label>
+            <div class="mb-inp" style="border:1px solid #30363D; border-radius:9px; background:#161B22; padding:12px 14px; transition:all .15s;">
+              <textarea rows="4" placeholder="Describe what you want to build in 2-3 sentences..." style="width:100%; resize:none; background:none; border:none; outline:none; color:#E6EDF3; font-family:'Inter',sans-serif; font-size:14px; line-height:1.55;">Build a real-time chat app with auth and message history. Users sign in, join rooms, and see messages appear live with who's online.</textarea>
+            </div>
+            <div style="font-size:11.5px; color:#484F58; margin-top:6px;">The more specific, the cleaner the task split. Mention key features and data.</div>
+          </div>
+
+          <!-- framework -->
+          <div>
+            <label style="font-size:13px; font-weight:600; display:block; margin-bottom:8px;">Language &amp; framework</label>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <sc-for list="{{ frameworks }}" as="f" hint-placeholder-count="5">
+                <button onClick="{{ f.toggle }}" class="mb-chip" style="font-size:13px; font-family:'JetBrains Mono',monospace; border:1px solid {{ f.border }}; background:{{ f.bg }}; color:{{ f.color }}; border-radius:8px; padding:7px 13px; cursor:pointer; transition:all .15s;">{{ f.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- max teammates -->
+          <div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <label style="font-size:13px; font-weight:600;">Max teammates</label>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#4F8EF7; font-weight:600;">{{ maxTeam }}</span>
+            </div>
+            <div style="display:flex; gap:7px;">
+              <sc-for list="{{ teamOptions }}" as="o" hint-placeholder-count="5">
+                <button onClick="{{ o.pick }}" class="mb-step" style="flex:1; font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:600; border:1px solid {{ o.border }}; background:{{ o.bg }}; color:{{ o.color }}; border-radius:8px; padding:11px 0; cursor:pointer; transition:all .15s;">{{ o.n }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- upload (coming soon) -->
+          <div style="display:flex; align-items:center; gap:13px; border:1px dashed #30363D; border-radius:9px; background:#0D1117; padding:14px 16px; opacity:.7;">
+            <span style="font-size:18px;">\uD83D\uDCE6</span>
+            <div style="flex:1;"><div style="font-size:13.5px; font-weight:600;">Extend an existing codebase</div><div style="font-size:12px; color:#7D8590;">Upload a repo and Mosaic plans around it.</div></div>
+            <span style="font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#D29922; border:1px solid rgba(210,153,34,0.3); border-radius:5px; padding:3px 8px;">Coming in V2</span>
+          </div>
+
+          <button onClick="{{ generate }}" class="mb-primary" style="background:#4F8EF7; color:#fff; border:none; font-family:'Inter',sans-serif; font-size:15px; font-weight:600; padding:14px; border-radius:9px; cursor:pointer; transition:background .15s; box-shadow:0 6px 18px rgba(79,142,247,0.22);">Generate Room Code →</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- SUCCESS: code generated -->
+    <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+      <div style="text-align:center; animation:mb-pop .25s ease;">
+        <div style="display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#3FB950; margin-bottom:20px;"><span style="width:7px; height:7px; border-radius:50%; background:#3FB950;"></span>Room created</div>
+        <h1 style="font-size:26px; font-weight:800; letter-spacing:-0.03em; margin:0 0 8px;">Share this code with your team</h1>
+        <p style="font-size:14px; color:#7D8590; margin:0 0 30px;">Teammates join at mosaic.dev — no account needed.</p>
+
+        <div style="border:1px solid #30363D; border-radius:16px; background:linear-gradient(180deg,#161B22,#0D1117); padding:34px; margin-bottom:20px;">
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.1em; color:#7D8590; margin-bottom:16px;">Room code</div>
+          <div style="display:flex; gap:10px; justify-content:center; margin-bottom:24px;">
+            <sc-for list="{{ codeDigits }}" as="d" hint-placeholder-count="6"><span style="width:50px; height:64px; border:1px solid #30363D; border-radius:11px; background:#0D1117; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:32px; font-weight:700; color:#4F8EF7;">{{ d.c }}</span></sc-for>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; border:1px solid #21262D; border-radius:9px; background:#0D1117; padding:10px 13px; max-width:360px; margin:0 auto;">
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12.5px; color:#7D8590; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left;">mosaic.dev/join/4K7P2X</span>
+            <button style="font-size:12px; background:#21262D; border:1px solid #30363D; color:#C9D1D9; padding:5px 12px; border-radius:6px; cursor:pointer; font-family:'Inter',sans-serif; font-weight:600;">Copy link</button>
+          </div>
+        </div>
+
+        <a href="Mosaic Lobby.dc.html" class="mb-primary" style="display:block; background:#4F8EF7; color:#fff; text-decoration:none; font-size:15px; font-weight:600; padding:14px; border-radius:9px; transition:background .15s;">Go to room lobby →</a>
+        <button onClick="{{ back }}" style="background:none; border:none; color:#7D8590; font-size:13px; cursor:pointer; font-family:'Inter',sans-serif; margin-top:16px;">← Edit room details</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- launcher -->
+  <div style="position:fixed; right:20px; bottom:20px; z-index:90;">
+    <sc-if value="{{ launcherOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="width:220px; background:#161B22; border:1px solid #30363D; border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,0.6); padding:10px; margin-bottom:10px; animation:mb-rise .15s ease;">
+        <a href="Mosaic Dashboard.dc.html" class="mb-scrn" style="display:block; padding:6px 8px; border-radius:6px; color:#7D8590; text-decoration:none; font-size:12.5px;">← Dashboard</a>
+        <a href="Mosaic Lobby.dc.html" class="mb-scrn" style="display:block; padding:6px 8px; border-radius:6px; color:#7D8590; text-decoration:none; font-size:12.5px;">Room Lobby →</a>
+        <a href="Mosaic Handoff.dc.html" class="mb-scrn" style="display:block; padding:6px 8px; border-radius:6px; color:#4F8EF7; text-decoration:none; font-size:12.5px;">★ All screens</a>
+      </div>
+    </sc-if>
+    <button onClick="{{ toggleLauncher }}" style="display:flex; align-items:center; gap:8px; background:#161B22; border:1px solid #30363D; color:#E6EDF3; font-family:'Inter',sans-serif; font-size:12px; font-weight:600; padding:9px 14px; border-radius:999px; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+      <span style="display:grid; grid-template-columns:repeat(2,4px); grid-template-rows:repeat(2,4px); gap:2px;"><span style="background:#4F8EF7;"></span><span style="background:#3FB950;"></span><span style="background:#A371F7;"></span><span style="background:#D29922;"></span></span>
+      Screens
+    </button>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { step:'form', fw:['React','FastAPI','Postgres'], max:4, launcherOpen:false };
+  FW = ['Python','JavaScript','TypeScript','React','FastAPI','Node','Postgres','Go'];
+  renderVals() {
+    const sel = this.state.fw;
+    const frameworks = this.FW.map(label => {
+      const on = sel.includes(label);
+      return { label,
+        border: on?'#4F8EF7':'#30363D', bg: on?'rgba(79,142,247,0.12)':'#161B22', color: on?'#4F8EF7':'#7D8590',
+        toggle: () => this.setState(s => ({ fw: s.fw.includes(label) ? s.fw.filter(x=>x!==label) : [...s.fw, label] })) };
+    });
+    const teamOptions = [2,3,4,5,6].map(n => {
+      const on = this.state.max===n;
+      return { n,
+        border: on?'#4F8EF7':'#30363D', bg: on?'rgba(79,142,247,0.12)':'#161B22', color: on?'#4F8EF7':'#7D8590',
+        pick: () => this.setState({ max:n }) };
+    });
+    return {
+      isForm: this.state.step==='form', isDone: this.state.step==='done',
+      frameworks, teamOptions, maxTeam: this.state.max,
+      codeDigits: '4K7P2X'.split('').map(c => ({ c })),
+      generate: () => this.setState({ step:'done' }),
+      back: () => this.setState({ step:'form' }),
+      launcherOpen: this.state.launcherOpen,
+      toggleLauncher: () => this.setState(s => ({ launcherOpen: !s.launcherOpen })),
+    };
+  }
+}
+</script>
+</body>
+</html>

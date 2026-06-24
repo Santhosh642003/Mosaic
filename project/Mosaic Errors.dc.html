@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:#0D1117; }
+  ::selection { background: rgba(79,142,247,0.30); }
+  ::-webkit-scrollbar { width:10px; } ::-webkit-scrollbar-thumb { background:#30363D; border-radius:5px; }
+  @keyframes mb-rise { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes mb-pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  @keyframes mb-spin { to{transform:rotate(360deg);} }
+  @keyframes mb-bars { 0%{height:20%;} 50%{height:100%;} 100%{height:20%;} }
+  .mb-primary:hover { background:#6BA0F8 !important; }
+  .mb-ghost:hover { border-color:#484F58 !important; }
+  .mb-scrn:hover { background:#21262D !important; color:#E6EDF3 !important; }
+</style>
+</helmet>
+<div style="min-height:100vh; font-family:'Inter',system-ui,sans-serif; color:#E6EDF3; background:#0D1117;">
+
+  <div style="height:56px; display:flex; align-items:center; padding:0 26px; gap:16px; border-bottom:1px solid #21262D; background:#161B22; position:sticky; top:0; z-index:40;">
+    <a href="Mosaic Landing.dc.html" style="display:flex; align-items:center; gap:9px; text-decoration:none; color:#E6EDF3;">
+      <div style="display:grid; grid-template-columns:repeat(3,6px); grid-template-rows:repeat(3,6px); gap:2px;"><div style="background:#4F8EF7;"></div><div style="background:#2D4A77;"></div><div style="background:#4F8EF7;"></div><div style="background:#2D4A77;"></div><div style="background:#4F8EF7;"></div><div style="background:#3FB950;"></div><div style="background:#4F8EF7;"></div><div style="background:#3FB950;"></div><div style="background:#2D4A77;"></div></div>
+      <span style="font-weight:700; font-size:16px;">Mosaic</span>
+    </a>
+    <span style="color:#484F58;">/</span><span style="font-size:14px; color:#7D8590;">Error &amp; empty states</span>
+  </div>
+
+  <div style="max-width:1080px; margin:0 auto; padding:32px 26px 80px;">
+    <p style="font-size:14px; color:#7D8590; max-width:560px; margin:0 0 28px;">Every failure path users can hit. Each is framed below as it appears in product — recoverable wherever possible, never a dead end.</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+
+      <!-- 404 -->
+      <div>
+        <div style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#7D8590; margin-bottom:8px;">404 · page not found</div>
+        <div style="border:1px solid #30363D; border-radius:14px; background:#010409; padding:44px 28px; text-align:center; min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="font-family:'JetBrains Mono',monospace; font-size:52px; font-weight:800; letter-spacing:-0.03em; margin-bottom:6px;"><span style="color:#4F8EF7;">4</span><span style="color:#A371F7;">0</span><span style="color:#3FB950;">4</span></div>
+          <div style="font-size:17px; font-weight:700; margin-bottom:8px;">This page got merged away</div>
+          <div style="font-size:13px; color:#7D8590; max-width:300px; margin:0 auto 22px; line-height:1.5;">The link is broken or the page never existed. Let's get you back to building.</div>
+          <a href="Mosaic Dashboard.dc.html" class="mb-primary" style="background:#4F8EF7; color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:10px 18px; border-radius:8px; transition:background .15s;">Back to dashboard</a>
+        </div>
+      </div>
+
+      <!-- room not found -->
+      <div>
+        <div style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#7D8590; margin-bottom:8px;">room not found</div>
+        <div style="border:1px solid #30363D; border-radius:14px; background:#010409; padding:44px 28px; text-align:center; min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="width:56px; height:56px; border-radius:14px; border:1px solid #30363D; background:#161B22; display:flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:18px;">🔍</div>
+          <div style="font-size:17px; font-weight:700; margin-bottom:8px;">No room with that code</div>
+          <div style="font-size:13px; color:#7D8590; max-width:300px; margin:0 auto 22px; line-height:1.5;">Code <span style="font-family:'JetBrains Mono',monospace; color:#F85149;">#8XQ2PP</span> doesn't match any room. Double-check with your team lead.</div>
+          <a href="Mosaic Join Room.dc.html" class="mb-primary" style="background:#4F8EF7; color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:10px 18px; border-radius:8px; transition:background .15s;">Try another code</a>
+        </div>
+      </div>
+
+      <!-- room expired -->
+      <div>
+        <div style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#7D8590; margin-bottom:8px;">room expired</div>
+        <div style="border:1px solid #30363D; border-radius:14px; background:#010409; padding:44px 28px; text-align:center; min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="width:56px; height:56px; border-radius:14px; border:1px solid rgba(210,153,34,0.35); background:rgba(210,153,34,0.08); display:flex; align-items:center; justify-content:center; font-size:26px; margin-bottom:18px;">⏳</div>
+          <div style="font-size:17px; font-weight:700; margin-bottom:8px;">This room has expired</div>
+          <div style="font-size:13px; color:#7D8590; max-width:320px; margin:0 auto 22px; line-height:1.5;">Rooms close 48h after the hackathon ends. The merged codebase is still saved to the lead's account.</div>
+          <div style="display:flex; gap:10px;"><a href="Mosaic Merge.dc.html" class="mb-ghost" style="border:1px solid #30363D; color:#C9D1D9; text-decoration:none; font-size:13px; font-weight:600; padding:10px 16px; border-radius:8px; transition:border-color .15s;">View final project</a><a href="Mosaic Create Room.dc.html" class="mb-primary" style="background:#4F8EF7; color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:10px 16px; border-radius:8px; transition:background .15s;">New room</a></div>
+        </div>
+      </div>
+
+      <!-- merge failed -->
+      <div>
+        <div style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#7D8590; margin-bottom:8px;">merge failed · retry</div>
+        <div style="border:1px solid rgba(248,81,73,0.35); border-radius:14px; background:#010409; padding:44px 28px; text-align:center; min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="width:56px; height:56px; border-radius:14px; border:1px solid rgba(248,81,73,0.4); background:rgba(248,81,73,0.08); display:flex; align-items:center; justify-content:center; font-size:26px; color:#F85149; margin-bottom:18px;">⚠</div>
+          <div style="font-size:17px; font-weight:700; margin-bottom:8px;">Merge couldn't finish</div>
+          <div style="font-size:13px; color:#7D8590; max-width:330px; margin:0 auto 18px; line-height:1.5;">T4 left an unresolved import for <span style="font-family:'JetBrains Mono',monospace; color:#79C0FF;">useSocket()</span>. We saved progress — fix the file and rerun.</div>
+          <div style="display:flex; gap:10px;"><button class="mb-ghost" style="border:1px solid #30363D; background:#161B22; color:#C9D1D9; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:10px 16px; border-radius:8px; cursor:pointer; transition:border-color .15s;">See log</button><button class="mb-primary" style="background:#4F8EF7; color:#fff; border:none; font-family:'Inter',sans-serif; font-size:13px; font-weight:600; padding:10px 18px; border-radius:8px; cursor:pointer; transition:background .15s;">↻ Retry merge</button></div>
+        </div>
+      </div>
+
+      <!-- connection lost -->
+      <div>
+        <div style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#7D8590; margin-bottom:8px;">connection lost · WebSocket reconnect</div>
+        <div style="border:1px solid #30363D; border-radius:14px; background:#010409; padding:44px 28px; text-align:center; min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="display:flex; align-items:flex-end; gap:4px; height:34px; margin-bottom:18px;">
+            <div style="width:5px; background:#D29922; border-radius:2px; animation:mb-bars 1s infinite ease;"></div>
+            <div style="width:5px; background:#D29922; border-radius:2px; animation:mb-bars 1s infinite ease .15s;"></div>
+            <div style="width:5px; background:#D29922; border-radius:2px; animation:mb-bars 1s infinite ease .3s;"></div>
+            <div style="width:5px; background:#D29922; border-radius:2px; animation:mb-bars 1s infinite ease .45s;"></div>
+          </div>
+          <div style="font-size:17px; font-weight:700; margin-bottom:8px; color:#E3B341;">Reconnecting…</div>
+          <div style="font-size:13px; color:#7D8590; max-width:320px; margin:0 auto 18px; line-height:1.5;">Lost the live connection. Your edits are buffered locally and will sync the moment you're back — nothing is lost.</div>
+          <div style="display:flex; align-items:center; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px; color:#7D8590; border:1px solid #30363D; border-radius:7px; padding:7px 12px;"><span style="width:13px; height:13px; border:2px solid rgba(210,153,34,0.3); border-top-color:#D29922; border-radius:50%; animation:mb-spin .7s linear infinite;"></span>attempt 2 · retrying in 3s</div>
+        </div>
+      </div>
+
+      <!-- empty dashboard -->
+      <div>
+        <div style="font-size:12px; font-family:'JetBrains Mono',monospace; color:#7D8590; margin-bottom:8px;">empty · first-time user</div>
+        <div style="border:1px solid #30363D; border-radius:14px; background:#010409; padding:44px 28px; text-align:center; min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+          <div style="width:56px; height:56px; border-radius:14px; border:1px solid #30363D; background:#161B22; display:flex; align-items:center; justify-content:center; margin-bottom:18px;">
+            <div style="display:grid; grid-template-columns:repeat(3,8px); grid-template-rows:repeat(3,8px); gap:3px; opacity:.55;"><div style="background:#4F8EF7; border-radius:1px;"></div><div style="background:#21262D; border-radius:1px;"></div><div style="background:#21262D; border-radius:1px;"></div><div style="background:#21262D; border-radius:1px;"></div><div style="background:#3FB950; border-radius:1px;"></div><div style="background:#21262D; border-radius:1px;"></div><div style="background:#21262D; border-radius:1px;"></div><div style="background:#21262D; border-radius:1px;"></div><div style="background:#A371F7; border-radius:1px;"></div></div>
+          </div>
+          <div style="font-size:17px; font-weight:700; margin-bottom:8px;">No rooms yet</div>
+          <div style="font-size:13px; color:#7D8590; max-width:300px; margin:0 auto 22px; line-height:1.5;">Spin up your first room and Mosaic splits the work across your team in seconds.</div>
+          <a href="Mosaic Create Room.dc.html" class="mb-primary" style="background:#4F8EF7; color:#fff; text-decoration:none; font-size:13px; font-weight:600; padding:10px 18px; border-radius:8px; transition:background .15s;">Create your first room →</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- launcher -->
+  <div style="position:fixed; right:20px; bottom:20px; z-index:90;">
+    <sc-if value="{{ launcherOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="width:220px; background:#161B22; border:1px solid #30363D; border-radius:12px; box-shadow:0 20px 50px rgba(0,0,0,0.6); padding:10px; margin-bottom:10px; animation:mb-rise .15s ease;">
+        <a href="Mosaic Landing.dc.html" class="mb-scrn" style="display:block; padding:6px 8px; border-radius:6px; color:#7D8590; text-decoration:none; font-size:12.5px;">← Landing</a>
+        <a href="Mosaic Handoff.dc.html" class="mb-scrn" style="display:block; padding:6px 8px; border-radius:6px; color:#4F8EF7; text-decoration:none; font-size:12.5px;">★ All screens</a>
+      </div>
+    </sc-if>
+    <button onClick="{{ toggleLauncher }}" style="display:flex; align-items:center; gap:8px; background:#161B22; border:1px solid #30363D; color:#E6EDF3; font-family:'Inter',sans-serif; font-size:12px; font-weight:600; padding:9px 14px; border-radius:999px; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+      <span style="display:grid; grid-template-columns:repeat(2,4px); grid-template-rows:repeat(2,4px); gap:2px;"><span style="background:#4F8EF7;"></span><span style="background:#3FB950;"></span><span style="background:#A371F7;"></span><span style="background:#D29922;"></span></span>
+      Screens
+    </button>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { launcherOpen:false };
+  renderVals() {
+    return {
+      launcherOpen: this.state.launcherOpen,
+      toggleLauncher: () => this.setState(s => ({ launcherOpen: !s.launcherOpen })),
+    };
+  }
+}
+</script>
+</body>
+</html>
