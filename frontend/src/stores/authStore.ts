@@ -7,12 +7,14 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  isInitializing: boolean;
   error: string | null;
 
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
   fetchMe: () => Promise<void>;
+  initialize: () => Promise<void>;
   clearError: () => void;
   setToken: (token: string) => void;
 }
@@ -23,6 +25,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       isLoading: false,
+      isInitializing: true,
       error: null,
 
       login: async (email, password) => {
@@ -70,6 +73,15 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      initialize: async () => {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          set({ token });
+          await get().fetchMe();
+        }
+        set({ isInitializing: false });
+      },
+
       clearError: () => set({ error: null }),
 
       setToken: (token) => {
@@ -86,3 +98,4 @@ export const useAuthStore = create<AuthState>()(
 
 export const useUser = () => useAuthStore((s) => s.user);
 export const useIsAuthed = () => useAuthStore((s) => !!s.user);
+export const useAuthInitializing = () => useAuthStore((s) => s.isInitializing);

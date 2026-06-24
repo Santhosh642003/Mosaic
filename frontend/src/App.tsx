@@ -1,9 +1,11 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { ProtectedRoute, PublicOnlyRoute } from '@/components/layout/ProtectedRoute';
+import { useAuthStore, useAuthInitializing } from '@/stores/authStore';
 
 const Landing      = lazy(() => import('@/pages/Landing'));
 const Auth         = lazy(() => import('@/pages/Auth'));
+const AuthCallback = lazy(() => import('@/pages/AuthCallback'));
 const Dashboard    = lazy(() => import('@/pages/Dashboard'));
 const CreateRoom   = lazy(() => import('@/pages/CreateRoom'));
 const JoinRoom     = lazy(() => import('@/pages/JoinRoom'));
@@ -33,6 +35,17 @@ function PageLoader() {
 }
 
 export default function App() {
+  const initialize = useAuthStore((s) => s.initialize);
+  const isInitializing = useAuthInitializing();
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  if (isInitializing) {
+    return <PageLoader />;
+  }
+
   return (
     <BrowserRouter>
       <Suspense fallback={<PageLoader />}>
@@ -42,6 +55,7 @@ export default function App() {
           <Route path="/join" element={<JoinRoom />} />
           <Route path="/join/:code" element={<JoinRoom />} />
           <Route path="/errors" element={<Errors />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
           {/* Auth — redirect if already signed in */}
           <Route element={<PublicOnlyRoute />}>

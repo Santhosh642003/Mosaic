@@ -48,7 +48,7 @@ async def assign_task(
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status != "pending":
+    if task.status != "unassigned":
         raise HTTPException(status_code=409, detail="Task already assigned")
 
     # Find the member record for the requesting user

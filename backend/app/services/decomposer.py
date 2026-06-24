@@ -79,7 +79,7 @@ async def run_decomposition(
                     contracts=exposes,  # contracts = exposed interfaces at creation time
                     contract_version=1,
                     contract_history=[],
-                    status="pending",
+                    status="unassigned",
                     code={},
                 )
                 db.add(task)

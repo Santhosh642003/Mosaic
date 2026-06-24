@@ -4,8 +4,10 @@ import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from urllib.parse import quote
 
 from app.auth_utils import (
     create_access_token,
@@ -90,52 +92,64 @@ async def github_redirect() -> dict:
     return {"url": url}
 
 
-@router.get("/github/callback", response_model=TokenResponse)
-async def github_callback(code: str, db: AsyncSession = Depends(get_db)) -> TokenResponse:
-    """Exchange GitHub OAuth code for a Mosaic JWT."""
+def _oauth_redirect(*, token: str | None = None, error: str | None = None) -> RedirectResponse:
+    """Redirect the browser back to the frontend OAuth callback page."""
+    base = settings.frontend_url.rstrip("/")
+    if token:
+        return RedirectResponse(url=f"{base}/auth/callback?token={quote(token)}")
+    return RedirectResponse(url=f"{base}/auth/callback?error={quote(error or 'GitHub sign-in failed')}")
+
+
+@router.get("/github/callback")
+async def github_callback(code: str, db: AsyncSession = Depends(get_db)) -> RedirectResponse:
+    """Exchange GitHub OAuth code for a Mosaic JWT, then redirect to the frontend."""
     if not settings.github_client_id:
-        raise HTTPException(status_code=501, detail="GitHub OAuth not configured")
+        return _oauth_redirect(error="GitHub OAuth not configured")
 
-    async with httpx.AsyncClient() as client:
-        # Exchange code for access token
-        token_resp = await client.post(
-            "https://github.com/login/oauth/access_token",
-            json={
-                "client_id": settings.github_client_id,
-                "client_secret": settings.github_client_secret,
-                "code": code,
-                "redirect_uri": settings.github_redirect_uri,
-            },
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        token_data = token_resp.json()
-        gh_token = token_data.get("access_token")
-        if not gh_token:
-            raise HTTPException(status_code=400, detail="GitHub OAuth failed")
-
-        # Fetch user info
-        user_resp = await client.get(
-            "https://api.github.com/user",
-            headers={"Authorization": f"Bearer {gh_token}", "Accept": "application/json"},
-            timeout=10,
-        )
-        gh_user = user_resp.json()
-
-        # Fetch primary email if not public
-        email = gh_user.get("email")
-        if not email:
-            emails_resp = await client.get(
-                "https://api.github.com/user/emails",
-                headers={"Authorization": f"Bearer {gh_token}"},
+    try:
+        async with httpx.AsyncClient() as client:
+            # Exchange code for access token
+            token_resp = await client.post(
+                "https://github.com/login/oauth/access_token",
+                json={
+                    "client_id": settings.github_client_id,
+                    "client_secret": settings.github_client_secret,
+                    "code": code,
+                    "redirect_uri": settings.github_redirect_uri,
+                },
+                headers={"Accept": "application/json"},
                 timeout=10,
             )
-            emails = emails_resp.json()
-            primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
-            email = primary["email"] if primary else None
+            token_data = token_resp.json()
+            gh_token = token_data.get("access_token")
+            if not gh_token:
+                return _oauth_redirect(error="GitHub sign-in failed")
+
+            # Fetch user info
+            user_resp = await client.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"Bearer {gh_token}", "Accept": "application/json"},
+                timeout=10,
+            )
+            gh_user = user_resp.json()
+
+            # Fetch primary email if not public
+            email = gh_user.get("email")
+            if not email:
+                emails_resp = await client.get(
+                    "https://api.github.com/user/emails",
+                    headers={"Authorization": f"Bearer {gh_token}"},
+                    timeout=10,
+                )
+                emails = emails_resp.json()
+                primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
+                email = primary["email"] if primary else None
+    except httpx.HTTPError:
+        logger.exception("GitHub OAuth network error")
+        return _oauth_redirect(error="Could not reach GitHub. Try again.")
 
     if not email:
-        raise HTTPException(status_code=400, detail="Could not retrieve email from GitHub")
+        return _oauth_redirect(error="Could not retrieve email from GitHub")
 
     github_id = str(gh_user["id"])
 
@@ -164,7 +178,7 @@ async def github_callback(code: str, db: AsyncSession = Depends(get_db)) -> Toke
             db.add(user)
             await db.flush()
 
-    return TokenResponse(access_token=create_access_token(user.id))
+    return _oauth_redirect(token=create_access_token(user.id))
 
 
 # ── Forgot password ───────────────────────────────────────────────────────────
