@@ -173,8 +173,8 @@ export interface SavedCodebase {
   id: string;
   roomId: string;
   roomName: string;
+  roomCode: string;
   language: string[];
-  fileCount: number;
+  mergedFiles: Record<string, string>;
   createdAt: string;
-  downloadUrl: string;
 }

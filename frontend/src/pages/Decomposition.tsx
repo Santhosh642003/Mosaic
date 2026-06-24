@@ -320,7 +320,7 @@ export default function Decomposition() {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-[1fr_300px] gap-8">
+      <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-[1fr_300px] gap-8">
         {/* Main */}
         <div>
           {/* Brief */}

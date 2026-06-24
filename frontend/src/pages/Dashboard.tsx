@@ -5,15 +5,20 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/stores/authStore';
-import { rooms as roomsApi } from '@/lib/api';
-import type { Room } from '@/types';
+import { rooms as roomsApi, users as usersApi, merge as mergeApi } from '@/lib/api';
+import type { Room, SavedCodebase } from '@/types';
 
 import { timeAgo, avatarColor } from '@/lib/utils';
 
+const ROOM_EMOJIS = ['💬', '🏆', '🍳', '🚀', '🎮', '🌐', '🛠️', '🎯'];
 
-const ROOM_ICONS: Record<string, string> = {
-  '1': '💬', '2': '🏆', '3': '🍳',
-};
+function roomEmoji(room: Room, index: number): string {
+  const lang = room.language?.[0]?.toLowerCase() ?? '';
+  if (lang === 'python') return '🐍';
+  if (lang === 'go') return '🐹';
+  if (lang === 'typescript' || lang === 'javascript') return '⚡';
+  return ROOM_EMOJIS[index % ROOM_EMOJIS.length];
+}
 
 const STATUS_BADGE: Record<string, { label: string; variant: 'green' | 'purple' | 'blue' | 'amber' }> = {
   waiting:      { label: 'Waiting',      variant: 'amber' },
@@ -23,23 +28,22 @@ const STATUS_BADGE: Record<string, { label: string; variant: 'green' | 'purple' 
   complete:     { label: 'Complete',     variant: 'purple' },
 };
 
-const TEAM_SAMPLES = ['Maya', 'Arjun', 'Sofia', 'Devon'];
-
 export default function Dashboard() {
   const user = useUser();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [codebases, setCodebases] = useState<SavedCodebase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    roomsApi.list()
-      .then((r) => setRooms(r.data))
-      .catch(() => {/* leave empty on error */})
-      .finally(() => setIsLoading(false));
+    Promise.all([
+      roomsApi.list().then((r) => setRooms(r.data)).catch(() => {}),
+      usersApi.codebases().then((r) => setCodebases(r.data)).catch(() => {}),
+    ]).finally(() => setIsLoading(false));
   }, []);
 
-  const displayRooms = rooms;
-  const isEmpty = !isLoading && displayRooms.length === 0;
+  const completedRooms = rooms.filter((r) => r.status === 'complete').length;
+  const isEmpty = !isLoading && rooms.length === 0;
 
   return (
     <div className="min-h-screen bg-ms-base">
@@ -62,14 +66,14 @@ export default function Dashboard() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
           {[
-            { icon: Users,    label: 'Rooms created',    value: '9',  color: 'text-ms-blue'   },
-            { icon: Zap,      label: 'Tasks completed',  value: '31', color: 'text-ms-green'  },
-            { icon: GitMerge, label: 'Merges done',      value: '6',  color: 'text-ms-purple' },
-            { icon: Clock,    label: 'Hours saved',      value: '48', color: 'text-ms-amber'  },
+            { icon: Users,    label: 'Rooms created',    value: String(rooms.length),        color: 'text-ms-blue'   },
+            { icon: Zap,      label: 'Tasks completed',  value: '—',                          color: 'text-ms-green'  },
+            { icon: GitMerge, label: 'Merges done',      value: String(completedRooms),       color: 'text-ms-purple' },
+            { icon: Clock,    label: 'Saved codebases',  value: String(codebases.length),     color: 'text-ms-amber'  },
           ].map(({ icon: Icon, label, value, color }) => (
             <div key={label} className="rounded-xl border border-ms-border bg-ms-surface p-5">
               <Icon size={16} className={`${color} mb-3`} />
-              <div className={`text-2xl font-extrabold ${color}`}>{value}</div>
+              <div className={`text-2xl font-extrabold ${color}`}>{isLoading ? '…' : value}</div>
               <div className="text-xs text-ms-fg3 mt-1">{label}</div>
             </div>
           ))}
@@ -100,7 +104,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {displayRooms.map((room) => {
+              {rooms.map((room, idx) => {
                 const badge = STATUS_BADGE[room.status] ?? STATUS_BADGE.waiting;
                 const href = room.status === 'complete'
                   ? `/rooms/${room.code}/merge`
@@ -113,7 +117,7 @@ export default function Dashboard() {
                     className="flex items-center gap-4 p-4 rounded-xl border border-ms-border bg-ms-surface hover:border-ms-raised hover:-translate-y-0.5 transition-all group"
                   >
                     <div className="w-10 h-10 rounded-xl bg-ms-raised border border-ms-border flex items-center justify-center text-xl flex-none">
-                      {ROOM_ICONS[room.id] ?? '📦'}
+                      {roomEmoji(room, idx)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -125,15 +129,12 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-3 flex-none">
                       <div className="flex -space-x-1.5">
-                        {TEAM_SAMPLES.slice(0, room.maxTeammates).map((name) => (
+                        {Array.from({ length: Math.min(room.maxTeammates, 4) }).map((_, i) => (
                           <div
-                            key={name}
+                            key={i}
                             className="w-6 h-6 rounded-full border-2 border-ms-surface flex items-center justify-center text-[8px] font-bold text-white"
-                            style={{ background: avatarColor(name) }}
-                            title={name}
-                          >
-                            {name[0]}
-                          </div>
+                            style={{ background: avatarColor(String(i)) }}
+                          />
                         ))}
                       </div>
                       <div className="text-xs text-ms-fg3">{timeAgo(room.createdAt)}</div>
@@ -147,27 +148,30 @@ export default function Dashboard() {
         </div>
 
         {/* Saved codebases */}
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-ms-fg3 mb-4">Saved codebases</h2>
-          <div className="grid sm:grid-cols-3 gap-3">
-            {[
-              { name: 'PingChat', lang: 'TypeScript · React · FastAPI', files: 24, date: '2 hours ago' },
-              { name: 'Leaderboard', lang: 'Go · TypeScript · Redis', files: 18, date: '1 day ago' },
-              { name: 'Recipe AI', lang: 'Python · React', files: 31, date: '3 days ago' },
-            ].map((cb) => (
-              <div key={cb.name} className="rounded-xl border border-ms-border bg-ms-surface p-4">
-                <div className="text-sm font-bold mb-1">{cb.name}</div>
-                <div className="text-xs text-ms-fg3 mb-3">{cb.lang}</div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-ms-fg3">{cb.files} files · {cb.date}</span>
-                  <button className="flex items-center gap-1 text-xs text-ms-blue hover:underline">
-                    <Download size={11} /> ZIP
-                  </button>
+        {codebases.length > 0 && (
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-ms-fg3 mb-4">Saved codebases</h2>
+            <div className="grid sm:grid-cols-3 gap-3">
+              {codebases.map((cb) => (
+                <div key={cb.id} className="rounded-xl border border-ms-border bg-ms-surface p-4">
+                  <div className="text-sm font-bold mb-1">{cb.roomName}</div>
+                  <div className="text-xs text-ms-fg3 mb-3">{cb.language?.join(' · ') ?? '—'}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-ms-fg3">
+                      {Object.keys(cb.mergedFiles ?? {}).length} files · {timeAgo(cb.createdAt)}
+                    </span>
+                    <a
+                      href={mergeApi.downloadUrl(cb.roomCode)}
+                      className="flex items-center gap-1 text-xs text-ms-blue hover:underline"
+                    >
+                      <Download size={11} /> ZIP
+                    </a>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

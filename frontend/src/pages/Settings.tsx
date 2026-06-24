@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
+import { users as usersApi } from '@/lib/api';
 
 type Theme = 'dark' | 'light' | 'system';
 type Lang  = 'Python' | 'TypeScript' | 'Go';
@@ -47,11 +50,28 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 }
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
+  const { logout } = useAuthStore();
   const [theme, setTheme] = useState<Theme>('dark');
   const [lang, setLang]   = useState<Lang>('Python');
   const [model, setModel] = useState<Model>('Qwen2.5-Coder');
   const [notif, setNotif] = useState({ blocked: true, merge: true, mention: false });
   const [showDanger, setShowDanger] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await usersApi.deleteAccount();
+      logout();
+      navigate('/');
+    } catch (e) {
+      setDeleteError((e as Error).message);
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-ms-base">
@@ -178,11 +198,14 @@ export default function SettingsPage() {
               <p className="text-sm text-ms-fg2 mb-4">
                 All your rooms, codebases, and history will be permanently deleted.
               </p>
+              {deleteError && (
+                <p className="text-xs text-ms-red mb-3">{deleteError}</p>
+              )}
               <div className="flex gap-2">
-                <Button variant="destructive" size="sm">
+                <Button variant="destructive" size="sm" loading={isDeleting} onClick={handleDeleteAccount}>
                   Yes, delete everything
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setShowDanger(false)}>
+                <Button variant="ghost" size="sm" onClick={() => setShowDanger(false)} disabled={isDeleting}>
                   Cancel
                 </Button>
               </div>

@@ -5,6 +5,7 @@ import { MosaicLogo } from '@/components/shared/MosaicLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/authStore';
+import { auth as authApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 type Mode = 'login' | 'signup' | 'forgot';
@@ -31,7 +32,7 @@ export default function Auth() {
       } else if (mode === 'login') {
         await login(email, password);
       } else {
-        // forgot — call API (wired in Section C)
+        await authApi.forgotPassword(email);
         setForgotSent(true);
         return;
       }
@@ -42,9 +43,14 @@ export default function Auth() {
     }
   };
 
-  const handleGithub = () => {
-    // Redirects to backend GitHub OAuth; wired in Section C
-    window.location.href = '/api/auth/github';
+  const handleGithub = async () => {
+    try {
+      const { data } = await authApi.githubUrl();
+      window.location.href = data.url;
+    } catch {
+      // fallback direct redirect if API call fails
+      window.location.href = '/api/auth/github';
+    }
   };
 
   return (

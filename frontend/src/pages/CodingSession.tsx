@@ -5,7 +5,7 @@ import { MosaicLogo } from '@/components/shared/MosaicLogo';
 import { Avatar } from '@/components/shared/Avatar';
 import { Button } from '@/components/ui/button';
 import { useTaskStore, useMyTask } from '@/stores/taskStore';
-import { useRoomStore } from '@/stores/roomStore';
+import { useRoomStore, useRoom } from '@/stores/roomStore';
 import { getSocket, connectSocket, emit } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/types';
@@ -64,17 +64,6 @@ async def get_messages(
     return [MessageOut.from_orm(r) for r in result.scalars()]
 `;
 
-const MOCK_FILES = [
-  { name: 'messages.py', lang: 'python', active: true },
-  { name: 'models.py',   lang: 'python', active: false },
-  { name: 'schemas.py',  lang: 'python', active: false },
-];
-
-const MOCK_TEAMMATES = [
-  { name: 'Maya Chen',   initials: 'MC', task: 'Auth service',    status: 'done'    as const, color: '#4F8EF7' },
-  { name: 'Sofia Reyes', initials: 'SR', task: 'WebSocket gw.',   status: 'coding'  as const, color: '#A371F7' },
-  { name: 'Devon Park',  initials: 'DP', task: 'React frontend',  status: 'blocked' as const, color: '#D29922' },
-];
 
 const QUICK_ACTIONS = [
   { icon: Zap,      label: 'Write boilerplate' },
@@ -83,14 +72,6 @@ const QUICK_ACTIONS = [
   { icon: BookOpen, label: 'Explain code' },
 ];
 
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: '0',
-    role: 'assistant',
-    content: "Hi! I'm your AI pair programmer scoped to the **Message API** task.\n\nI know your interface contracts: `save_message()` must accept `room_id` and `MessageIn`, and `GET /messages/{room_id}` must return a paginated list. I can see what Auth (T1) exposes and what WebSocket (T3) depends on.\n\nWhat do you want to build first?",
-    timestamp: new Date().toISOString(),
-  },
-];
 
 function MobileGuard() {
   return (
@@ -108,27 +89,42 @@ export default function CodingSession() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const myTask = useMyTask();
+  const room = useRoom();
   const { chatMessages, addChatMessage, appendChatChunk, finalizeChatStream, isChatStreaming, setIsChatStreaming } = useTaskStore();
-  const { members } = useRoomStore();
+  const { members, myMemberId } = useRoomStore();
 
-  // Derive files from real task, fall back to mock for demo
   const taskFiles = myTask?.files?.length
-    ? myTask.files.map((name) => ({ name, lang: name.endsWith('.py') ? 'python' : name.endsWith('.ts') || name.endsWith('.tsx') ? 'typescript' : 'javascript', active: false }))
-    : MOCK_FILES;
+    ? myTask.files.map((name) => ({
+        name,
+        lang: name.endsWith('.py') ? 'python'
+          : name.endsWith('.ts') || name.endsWith('.tsx') ? 'typescript'
+          : 'javascript',
+        active: false,
+      }))
+    : [];
 
-  const [activeFile, setActiveFile] = useState(taskFiles[0]?.name ?? 'messages.py');
+  const [activeFile, setActiveFile] = useState(taskFiles[0]?.name ?? '');
   const [editorCode, setEditorCode] = useState<Record<string, string>>(myTask?.code ?? {});
   const [isBlocked, setIsBlocked] = useState(false);
   const [input, setInput] = useState('');
-  const [timer, setTimer] = useState(8 * 3600 - 42 * 60);
+  const [timer, setTimer] = useState(0);
   const [isMarking, setIsMarking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const currentCode = editorCode[activeFile] ?? (myTask ? '' : MOCK_CODE);
-  const displayMessages = chatMessages.length > 0 ? chatMessages : INITIAL_MESSAGES;
+
+  const initialMessage: ChatMessage = {
+    id: '0',
+    role: 'assistant',
+    content: myTask
+      ? `Hi! I'm your AI pair programmer scoped to the **${myTask.name}** task.\n\nI know your interface contracts and can see what other tasks expose and depend on. Ask me to write, explain, debug, or test anything related to your task.`
+      : "Hi! I'm your AI pair programmer. Once you're assigned a task, I'll have full context on your contracts and dependencies. What would you like to build?",
+    timestamp: new Date().toISOString(),
+  };
+  const displayMessages = chatMessages.length > 0 ? chatMessages : [initialMessage];
 
   useEffect(() => {
-    const t = setInterval(() => setTimer((s) => Math.max(0, s - 1)), 1000);
+    const t = setInterval(() => setTimer((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -206,9 +202,9 @@ export default function CodingSession() {
     setTimeout(() => navigate(`/rooms/${code}/merge`), 600);
   };
 
-  const teammates = members.length > 0
-    ? members.filter((m) => m.id !== 'myId').map((m) => ({ name: m.displayName, initials: m.initials, task: 'Task', status: m.status, color: '#4F8EF7' }))
-    : MOCK_TEAMMATES;
+  const teammates = members
+    .filter((m) => m.id !== myMemberId)
+    .map((m) => ({ name: m.displayName, initials: m.initials, status: m.status, color: m.avatarColor }));
 
   return (
     <>
@@ -218,10 +214,10 @@ export default function CodingSession() {
         <div className="flex-none h-11 flex items-center px-4 gap-4 border-b border-ms-subtle bg-ms-surface">
           <MosaicLogo size="sm" />
           <span className="text-ms-fg3 text-sm">|</span>
-          <span className="text-sm font-semibold">PingChat</span>
-          <span className="text-[10px] font-mono text-ms-fg3">#4K7P2X</span>
+          <span className="text-sm font-semibold">{room?.name ?? code}</span>
+          <span className="text-[10px] font-mono text-ms-fg3">#{code}</span>
           <span className="text-ms-fg3">·</span>
-          <span className="text-sm text-ms-blue font-semibold">Message API</span>
+          <span className="text-sm text-ms-blue font-semibold">{myTask?.name ?? 'No task assigned'}</span>
 
           {/* Teammate pills */}
           <div className="flex items-center gap-2 ml-4">
@@ -281,7 +277,7 @@ export default function CodingSession() {
             {/* File tree */}
             <div className="p-2 border-b border-ms-subtle flex-1">
               <p className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3 px-1 mb-2">Files</p>
-              {MOCK_FILES.map((f) => (
+              {taskFiles.length > 0 ? taskFiles.map((f) => (
                 <button
                   key={f.name}
                   onClick={() => setActiveFile(f.name)}
@@ -295,38 +291,51 @@ export default function CodingSession() {
                   <ChevronRight size={10} className={activeFile === f.name ? 'rotate-90' : ''} />
                   {f.name}
                 </button>
-              ))}
+              )) : (
+                <p className="text-[10px] text-ms-fg3 px-2 py-1">No files assigned</p>
+              )}
             </div>
 
             {/* Contracts */}
             <div className="p-2 border-b border-ms-subtle">
               <p className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3 px-1 mb-2">Exposes</p>
               <div className="space-y-1">
-                <div className="text-[10px] font-mono px-2 py-1 rounded bg-ms-deep border border-ms-subtle text-ms-green">
-                  POST /messages
-                </div>
-                <div className="text-[10px] font-mono px-2 py-1 rounded bg-ms-deep border border-ms-subtle text-ms-green">
-                  GET /messages/{'{room_id}'}
-                </div>
+                {myTask?.exposes?.length ? myTask.exposes.map((c) => (
+                  <div key={c.signature} className="text-[10px] font-mono px-2 py-1 rounded bg-ms-deep border border-ms-subtle text-ms-green">
+                    {c.signature}
+                  </div>
+                )) : (
+                  <p className="text-[10px] text-ms-fg3 px-2 py-1">None</p>
+                )}
               </div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3 px-1 mt-3 mb-2">Needs (T1)</p>
-              <div className="text-[10px] font-mono px-2 py-1 rounded bg-ms-deep border border-ms-subtle text-ms-blue">
-                verify_token(token)
-              </div>
+              {myTask?.dependsOn?.length ? (
+                <>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3 px-1 mt-3 mb-2">Needs</p>
+                  <div className="space-y-1">
+                    {myTask.dependsOn.map((c) => (
+                      <div key={c.signature} className="text-[10px] font-mono px-2 py-1 rounded bg-ms-deep border border-ms-subtle text-ms-blue">
+                        {c.signature}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
 
             {/* Teammate status */}
             <div className="p-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3 px-1 mb-2">Team</p>
-              {teammates.map((tm) => (
+              {teammates.length > 0 ? teammates.map((tm) => (
                 <div key={tm.name} className="flex items-center gap-2 px-1 py-1.5">
                   <Avatar name={tm.name} size="xs" color={tm.color} status={tm.status} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[11px] font-semibold text-ms-fg truncate">{tm.name.split(' ')[0]}</div>
-                    <div className="text-[10px] text-ms-fg3 truncate">{tm.task}</div>
+                    <div className="text-[10px] text-ms-fg3 capitalize truncate">{tm.status}</div>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <p className="text-[10px] text-ms-fg3 px-2 py-1">No teammates yet</p>
+              )}
               <button
                 onClick={() => { setIsBlocked((b) => !b); emit('update_status', { status: isBlocked ? 'coding' : 'blocked' }); }}
                 className={cn(
@@ -396,12 +405,12 @@ export default function CodingSession() {
 
             {/* Status bar */}
             <div className="flex-none h-6 flex items-center px-4 gap-4 bg-ms-blue text-white text-[10px] font-mono">
-              <span>Python</span>
+              <span className="capitalize">{taskFiles.find((f) => f.name === activeFile)?.lang ?? 'plaintext'}</span>
               <span>·</span>
               <span>UTF-8</span>
               <span>·</span>
               <span>LF</span>
-              <span className="ml-auto">Ln 24, Col 1</span>
+              <span className="ml-auto">{activeFile}</span>
             </div>
           </div>
 
@@ -417,7 +426,7 @@ export default function CodingSession() {
                 <span className="ml-auto text-[10px] text-ms-green font-semibold">● Live</span>
               </div>
               <div className="mt-1.5 text-[10px] text-ms-fg3">
-                Context: Message API task + all interface contracts
+                Context: {myTask ? `${myTask.name} task + interface contracts` : 'No task assigned'}
               </div>
             </div>
 

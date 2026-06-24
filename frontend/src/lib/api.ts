@@ -7,7 +7,7 @@
  */
 
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios';
-import type { Room, RoomMember, AuthTokens, User, Task, RoomState, MergeResult } from '@/types';
+import type { Room, RoomMember, AuthTokens, User, Task, RoomState, MergeResult, SavedCodebase } from '@/types';
 
 // ── snake_case → camelCase transformer ────────────────────────────────────────
 
@@ -70,6 +70,9 @@ export const auth = {
   me: () => client.get<User>('/auth/me'),
 
   githubUrl: () => client.get<{ url: string }>('/auth/github'),
+
+  forgotPassword: (email: string) =>
+    client.post('/auth/forgot-password', { email }),
 };
 
 // ── Rooms ──────────────────────────────────────────────────────────────────────
@@ -106,6 +109,14 @@ export const tasks = {
 
   submit: (roomCode: string, taskId: string, code: Record<string, string>) =>
     client.post<Task>(`/rooms/${roomCode}/tasks/${taskId}/submit`, { code }),
+};
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+export const users = {
+  codebases: () => client.get<SavedCodebase[]>('/users/me/codebases'),
+
+  deleteAccount: () => client.delete('/users/me'),
 };
 
 // ── Merge ──────────────────────────────────────────────────────────────────────
