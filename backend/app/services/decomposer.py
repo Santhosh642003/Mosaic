@@ -1,6 +1,5 @@
 """AI-powered task decomposition service."""
 
-import json
 import logging
 import uuid
 
@@ -25,14 +24,28 @@ async def run_decomposition(
 ) -> None:
     """Run decomposition, stream progress, persist tasks, emit completion."""
     try:
-        # Notify room decomposition has started
         await sio.emit(
             "decomposition_stream",
             {"chunk": "Analyzing project brief...\n", "done": False},
             room=room_code,
         )
 
-        raw_json = await decompose_brief(brief, language, max_tasks)
+        try:
+            decomposition = await decompose_brief(brief, language, max_tasks)
+        except ValueError as exc:
+            logger.error("Decomposition structured output failed: %s", exc)
+            await sio.emit(
+                "decomposition_stream",
+                {"chunk": "", "done": True, "error": "Failed to parse decomposition response after retries"},
+                room=room_code,
+            )
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Room).where(Room.id == room_id))
+                room = result.scalar_one_or_none()
+                if room:
+                    room.status = "waiting"
+                    await db.commit()
+            return
 
         await sio.emit(
             "decomposition_stream",
@@ -40,40 +53,32 @@ async def run_decomposition(
             room=room_code,
         )
 
-        # Parse response
-        try:
-            data = json.loads(raw_json)
-            tasks_data = data.get("tasks", [])
-        except (json.JSONDecodeError, AttributeError) as exc:
-            logger.error("Decomposition JSON parse error: %s\nRaw: %s", exc, raw_json[:500])
-            await sio.emit(
-                "decomposition_stream",
-                {"chunk": "", "done": True, "error": "Failed to parse decomposition response"},
-                room=room_code,
-            )
-            return
+        tasks_data = decomposition.tasks[:max_tasks]
 
-        # Persist tasks
-        tasks = []
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Room).where(Room.id == room_id))
             room = result.scalar_one_or_none()
             if not room:
                 return
 
-            for i, t in enumerate(tasks_data[:max_tasks]):
+            tasks = []
+            for i, t in enumerate(tasks_data):
+                exposes = [e.model_dump() for e in t.exposes]
+                depends_on = [d.model_dump() for d in t.depends_on]
                 task = Task(
                     id=str(uuid.uuid4()),
                     room_id=room_id,
-                    name=t.get("name", f"Task {i + 1}"),
-                    description=t.get("description", ""),
-                    tech=t.get("tech", ""),
-                    complexity=t.get("complexity", "medium"),
-                    color=t.get("color", TASK_COLORS[i % len(TASK_COLORS)]),
-                    files=t.get("files", []),
-                    exposes=t.get("exposes", []),
-                    depends_on=t.get("depends_on", []),
-                    contracts=t.get("exposes", []),  # contracts = exposed interfaces
+                    name=t.name,
+                    description=t.description,
+                    tech=t.tech,
+                    complexity=t.complexity,
+                    color=t.color or TASK_COLORS[i % len(TASK_COLORS)],
+                    files=t.files,
+                    exposes=exposes,
+                    depends_on=depends_on,
+                    contracts=exposes,  # contracts = exposed interfaces at creation time
+                    contract_version=1,
+                    contract_history=[],
                     status="pending",
                     code={},
                 )
@@ -95,6 +100,7 @@ async def run_decomposition(
                     "exposes": t.exposes,
                     "depends_on": t.depends_on,
                     "contracts": t.contracts,
+                    "contract_version": t.contract_version,
                     "status": t.status,
                 }
                 for t in tasks
@@ -115,7 +121,6 @@ async def run_decomposition(
             {"chunk": "", "done": True, "error": str(exc)},
             room=room_code,
         )
-        # Revert room status
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Room).where(Room.id == room_id))
             room = result.scalar_one_or_none()

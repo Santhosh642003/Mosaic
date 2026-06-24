@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -259,6 +260,167 @@ async def handle_trigger_merge(sid: str, data: dict) -> None:
     from app.services.merger import run_merge
     import asyncio
     asyncio.create_task(run_merge(room_id, room_code))
+
+
+# ── Contract change flow (Guard 2 MVP) ────────────────────────────────────────
+# Contracts are LOCKED during a session. A builder can propose a change;
+# the Lead approves or rejects. Only on approval does the contract update.
+
+@sio.on("request_contract_change")
+async def handle_request_contract_change(sid: str, data: dict) -> None:
+    """
+    Builder proposes a contract change.
+    Client sends: { task_id, proposed_contracts: [...], reason: str }
+    Broadcasts contract_change_requested to the Lead's socket(s) in the room.
+    """
+    task_id = data.get("task_id")
+    proposed = data.get("proposed_contracts", [])
+    reason = data.get("reason", "")
+
+    room_code, member_id = await _get_member_and_room(sid)
+    if not room_code or not task_id:
+        await sio.emit("error", {"message": "task_id and room membership required"}, to=sid)
+        return
+
+    async with AsyncSessionLocal() as db:
+        task_result = await db.execute(select(Task).where(Task.id == task_id))
+        task = task_result.scalar_one_or_none()
+        if not task:
+            await sio.emit("error", {"message": "Task not found"}, to=sid)
+            return
+
+        room_result = await db.execute(select(Room).where(Room.id == task.room_id))
+        room = room_result.scalar_one_or_none()
+        if not room:
+            return
+
+        # Identify the requesting member's display name
+        requester_name = "Unknown"
+        if member_id:
+            m_result = await db.execute(select(RoomMember).where(RoomMember.id == member_id))
+            m = m_result.scalar_one_or_none()
+            if m:
+                requester_name = m.display_name
+
+    logger.info(
+        "contract change requested for task %s in room %s by member %s",
+        task_id, room_code, member_id,
+    )
+
+    # Broadcast to room so Lead sees it (Lead's UI filters by role)
+    await sio.emit(
+        "contract_change_requested",
+        {
+            "task_id": task_id,
+            "task_name": task.name,
+            "current_contracts": task.contracts,
+            "contract_version": task.contract_version,
+            "proposed_contracts": proposed,
+            "reason": reason,
+            "requested_by_member_id": member_id,
+            "requested_by": requester_name,
+        },
+        room=room_code,
+    )
+
+
+@sio.on("approve_contract_change")
+async def handle_approve_contract_change(sid: str, data: dict) -> None:
+    """
+    Lead approves a contract change.
+    Client sends: { task_id, approved_contracts: [...] }
+    Updates DB, increments version, logs history, broadcasts contract_updated.
+    """
+    task_id = data.get("task_id")
+    approved_contracts = data.get("approved_contracts", [])
+
+    room_code, member_id = await _get_member_and_room(sid)
+    if not room_code or not task_id:
+        await sio.emit("error", {"message": "task_id required"}, to=sid)
+        return
+
+    async with AsyncSessionLocal() as db:
+        room_result = await db.execute(select(Room).where(Room.code == room_code))
+        room = room_result.scalar_one_or_none()
+        if not room:
+            return
+
+        # Only Lead can approve
+        async with sio.session(sid) as session:
+            user_id = session.get("user_id")
+        if room.lead_id != user_id:
+            await sio.emit("error", {"message": "Only the Lead can approve contract changes"}, to=sid)
+            return
+
+        task_result = await db.execute(select(Task).where(Task.id == task_id))
+        task = task_result.scalar_one_or_none()
+        if not task:
+            await sio.emit("error", {"message": "Task not found"}, to=sid)
+            return
+
+        # Log current version to history before overwriting
+        history_entry = {
+            "version": task.contract_version,
+            "contracts": task.contracts,
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "changed_by": user_id,
+        }
+        task.contract_history = list(task.contract_history or []) + [history_entry]
+        task.contracts = approved_contracts
+        task.contract_version = (task.contract_version or 1) + 1
+
+        await db.commit()
+        new_version = task.contract_version
+
+    logger.info(
+        "contract approved for task %s in room %s — now at version %d",
+        task_id, room_code, new_version,
+    )
+
+    await sio.emit(
+        "contract_updated",
+        {
+            "task_id": task_id,
+            "contracts": approved_contracts,
+            "contract_version": new_version,
+        },
+        room=room_code,
+    )
+
+
+@sio.on("reject_contract_change")
+async def handle_reject_contract_change(sid: str, data: dict) -> None:
+    """
+    Lead rejects a contract change.
+    Client sends: { task_id, reason?: str }
+    Broadcasts contract_change_rejected to the room.
+    """
+    task_id = data.get("task_id")
+    reason = data.get("reason", "")
+
+    room_code, _ = await _get_member_and_room(sid)
+    if not room_code or not task_id:
+        return
+
+    async with AsyncSessionLocal() as db:
+        room_result = await db.execute(select(Room).where(Room.code == room_code))
+        room = room_result.scalar_one_or_none()
+        if not room:
+            return
+
+        async with sio.session(sid) as session:
+            user_id = session.get("user_id")
+        if room.lead_id != user_id:
+            await sio.emit("error", {"message": "Only the Lead can reject contract changes"}, to=sid)
+            return
+
+    logger.info("contract change rejected for task %s in room %s", task_id, room_code)
+
+    await sio.emit(
+        "contract_change_rejected",
+        {"task_id": task_id, "reason": reason},
+        room=room_code,
+    )
 
 
 # ── ai_prompt ─────────────────────────────────────────────────────────────────

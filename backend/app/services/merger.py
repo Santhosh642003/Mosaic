@@ -1,6 +1,5 @@
 """AI-powered codebase merge service."""
 
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -9,7 +8,8 @@ from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
 from app.models import Merge, Room, Task
-from app.services.llm_service import merge_codebases
+from app.services.ast_validator import validate_files
+from app.services.llm_service import merge_codebases, merge_self_correct
 from app.socket_manager import sio
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ LOG_STAGES = [
     "Integrating shared utilities...",
     "Resolving conflicts semantically...",
     "Generating unified file tree...",
-    "Running final consistency check...",
+    "Running syntax/AST validation...",
     "Merge complete.",
 ]
 
@@ -29,7 +29,6 @@ LOG_STAGES = [
 async def run_merge(room_id: str, room_code: str) -> None:
     """Run AI merge, stream log events, persist result, emit merge_complete."""
     try:
-        # Collect all submitted task code
         async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(Task).where(Task.room_id == room_id, Task.status == "done")
@@ -49,7 +48,6 @@ async def run_merge(room_id: str, room_code: str) -> None:
             )
             return
 
-        # Stream progress logs while merge runs
         async def _log(msg: str, tag: str = "INFO") -> None:
             await sio.emit(
                 "merge_log_stream",
@@ -65,26 +63,92 @@ async def run_merge(room_id: str, room_code: str) -> None:
         ]
 
         await _log(LOG_STAGES[1])
-        raw_json = await merge_codebases(tasks_payload, brief)
-        await _log(LOG_STAGES[2])
 
+        # Guard 1: structured, validated merge result
         try:
-            merge_data = json.loads(raw_json)
-        except (json.JSONDecodeError, AttributeError) as exc:
-            logger.error("Merge JSON parse error: %s\nRaw: %s", exc, raw_json[:500])
+            merge_result = await merge_codebases(tasks_payload, brief)
+        except ValueError as exc:
+            logger.error("Merge structured output failed: %s", exc)
             await sio.emit(
                 "merge_log_stream",
-                {"message": f"Parse error: {exc}", "tag": "ERROR", "done": True},
+                {"message": f"Merge failed: {exc}", "tag": "ERROR", "done": True},
                 room=room_code,
             )
+            async with AsyncSessionLocal() as db:
+                room_result = await db.execute(select(Room).where(Room.id == room_id))
+                room = room_result.scalar_one_or_none()
+                if room:
+                    room.status = "coding"
+                    await db.commit()
             return
 
-        merged_files = merge_data.get("merged_files", {})
-        diff_report = merge_data.get("diff_report", [])
-        conflicts = merge_data.get("conflicts", [])
+        await _log(LOG_STAGES[2])
+        await _log(LOG_STAGES[3])
+        await _log(LOG_STAGES[4])
+        await _log(LOG_STAGES[5])
 
-        for stage in LOG_STAGES[3:]:
-            await _log(stage)
+        merged_files = merge_result.merged_files
+        diff_report = [e.model_dump() for e in merge_result.diff_report]
+        conflicts = [e.model_dump() for e in merge_result.conflicts]
+
+        # Guard 3 MVP: AST/syntax validation + one self-correction pass
+        await _log(LOG_STAGES[6])
+        parse_errors = validate_files(merged_files)
+
+        if parse_errors:
+            file_list = ", ".join(parse_errors.keys())
+            await _log(
+                f"Syntax errors found in {len(parse_errors)} file(s): {file_list}. "
+                "Requesting self-correction...",
+                tag="WARN",
+            )
+            try:
+                corrected = await merge_self_correct(merged_files, parse_errors, brief)
+                corrected_files = corrected.merged_files
+
+                # Re-validate after self-correction
+                remaining_errors = validate_files(corrected_files)
+
+                if remaining_errors:
+                    # Merge corrected files but flag the still-failing ones
+                    merged_files.update(corrected_files)
+                    failing_info = [
+                        {
+                            "id": f"syntax-{i}",
+                            "description": f"Syntax error in {path}: {err}",
+                            "resolution": "File included but may contain errors — review manually",
+                            "files": [path],
+                        }
+                        for i, (path, err) in enumerate(remaining_errors.items())
+                    ]
+                    conflicts.extend(failing_info)
+                    await _log(
+                        f"Self-correction resolved some issues but {len(remaining_errors)} "
+                        f"file(s) still have errors. They are flagged in the conflict report.",
+                        tag="WARN",
+                    )
+                else:
+                    merged_files = corrected_files
+                    await _log("Self-correction successful — all files pass validation.", tag="INFO")
+            except Exception as exc:
+                logger.warning("Self-correction pass failed: %s", exc)
+                # Add original errors to conflict report and continue
+                failing_info = [
+                    {
+                        "id": f"syntax-{i}",
+                        "description": f"Syntax error in {path}: {err}",
+                        "resolution": "Self-correction failed — review manually",
+                        "files": [path],
+                    }
+                    for i, (path, err) in enumerate(parse_errors.items())
+                ]
+                conflicts.extend(failing_info)
+                await _log(
+                    f"Self-correction pass failed. {len(parse_errors)} file(s) flagged in conflict report.",
+                    tag="WARN",
+                )
+        else:
+            await _log("All files passed syntax validation.", tag="INFO")
 
         # Persist result
         async with AsyncSessionLocal() as db:
