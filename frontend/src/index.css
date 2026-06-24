@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-ms-base text-ms-fg;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: rgba(79, 142, 247, 0.3);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #30363D;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #484F58; }
+}
+
+/* ── Utilities ──────────────────────────────────────────────────────────── */
+
+@layer utilities {
+  /* Gradient headline used on Landing */
+  .gradient-text {
+    background: linear-gradient(135deg, #4F8EF7 0%, #A371F7 50%, #3FB950 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ms-gradient 4s linear infinite;
+  }
+
+  /* Mono code surface */
+  .code-surface {
+    font-family: 'JetBrains Mono', Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* Glass card */
+  .glass {
+    background: rgba(22, 27, 34, 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(48, 54, 61, 0.6);
+  }
+
+  /* Hide scrollbar but keep scroll */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* ── Monaco Editor overrides ────────────────────────────────────────────── */
+
+.monaco-editor,
+.monaco-editor-background,
+.monaco-editor .margin {
+  background-color: #010409 !important;
+}
+
+.monaco-editor .minimap { border-left: 1px solid #21262D; }
+
+/* ── Mobile IDE guard ───────────────────────────────────────────────────── */
+
+.ide-guard {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .ide-guard {
+    display: flex;
+  }
+  .ide-layout {
+    display: none !important;
+  }
+}

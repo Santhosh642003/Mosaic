@@ -1,25 +1,73 @@
-# CODING AGENTS: READ THIS FIRST
+# Mosaic
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+Collaborative AI coding platform for hackathon teams. Teams join a shared room, AI decomposes the project brief into parallelizable tasks, each teammate codes simultaneously with an AI pair programmer, then AI semantically merges all codebases.
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+## Stack
 
-## What you should do — IMPORTANT
+| Layer | Tech |
+|---|---|
+| Frontend | React 18 + TypeScript + Vite + Tailwind + Monaco Editor |
+| Realtime | Socket.io (Redis pub/sub for multi-worker) |
+| Backend | Python 3.11 + FastAPI + python-socketio |
+| Database | PostgreSQL 16 (SQLAlchemy 2 async + Alembic) |
+| Cache | Redis 7 |
+| LLM | Groq API — DeepSeek-R1 for decomp/merge, Qwen for coding |
+| Auth | JWT (python-jose) + bcrypt + GitHub OAuth |
 
-**Read the chat transcripts first.** There are 1 chat transcript(s) in `chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+## Quick start
 
-**Read `project/Mosaic Handoff.dc.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+```bash
+cp .env.example .env
+# Fill in GROQ_API_KEY and JWT_SECRET
+docker compose up
+# Frontend: http://localhost  Backend: http://localhost:8000/docs
+```
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+## Development
 
-## About the design files
+### Backend
+```bash
+cd backend
+pip install -r requirements.txt
+docker compose up postgres redis -d
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+```
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
+### Frontend
+```bash
+cd frontend && npm install && npm run dev
+```
 
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
+## Environment variables
 
-## Bundle contents
+See `.env.example`. Required: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `GROQ_API_KEY`.
+Optional: `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` for OAuth.
 
-- `README.md` — this file
-- `chats/` — conversation transcripts (read these!)
-- `project/` — the `Mosaic collaborative AI coding` project files (HTML prototypes, assets, components)
+## User flow
+
+1. **Create room** — Lead sets project brief + language stack, gets a 6-char code
+2. **Join** — Teammates join via code (guest or authenticated)
+3. **Lobby** — Lead starts decomposition once ready
+4. **Decompose** — DeepSeek-R1 breaks brief into parallel tasks with interface contracts
+5. **Code** — Each teammate codes in Monaco with Qwen as AI pair programmer
+6. **Merge** — Lead triggers semantic merge; result downloads as ZIP
+
+## API routes
+
+```
+POST /api/auth/register|login         GET /api/auth/me
+GET  /api/auth/github                 GET /api/auth/github/callback
+
+POST /api/rooms                       GET /api/rooms
+GET  /api/rooms/:code                 GET /api/rooms/:code/state
+POST /api/rooms/:code/join            GET /api/rooms/:code/tasks
+POST /api/rooms/:code/tasks/:id/assign|submit
+POST /api/rooms/:code/merge           GET /api/rooms/:code/merge/result|download
+
+GET  /api/users/me    PATCH /api/users/me    GET /api/users/me/codebases
+```
+
+## Deploy
+
+Docker Compose is production-ready. For Railway: connect repo → add Postgres + Redis plugins → set env vars → deploy.

@@ -1,0 +1,39 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+
+# Real-time
+python-socketio==5.11.2
+python-engineio==4.9.1
+
+# Database
+sqlalchemy==2.0.31
+asyncpg==0.29.0
+alembic==1.13.2
+psycopg2-binary==2.9.9
+
+# Redis
+redis==5.0.7
+hiredis==2.3.2
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+bcrypt==4.0.1
+httpx==0.27.0           # GitHub OAuth requests
+
+# LLM
+groq==0.9.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.8.2
+pydantic-settings==2.3.4
+
+# ZIP generation
+# stdlib zipfile — no extra package needed
+
+# Dev / testing
+pytest==8.2.2
+pytest-asyncio==0.23.7
+httpx==0.27.0
