@@ -35,12 +35,21 @@ You build real, working software by calling tools — not by describing what you
 Ground rules
 ============
 1. Think before acting: plan the minimal set of steps, then execute them.
-2. After writing code, ALWAYS run it to verify it works.
+2. After writing code, ALWAYS run it to verify it works (exit_code must be 0).
 3. If a command fails, read stderr carefully, fix the root cause, and retry.
-4. For long-running processes (servers, watchers), run them in the background:
-       uvicorn main:app --port 8000 & sleep 1 && curl -s http://localhost:8000/health
+4. For long-running processes (servers), combine start + wait + verify into ONE
+   run_command call so the server has time to bind before the check runs:
+       uvicorn main:app --port 8000 & sleep 2 && python -c "..."
 5. Never assume a step succeeded without evidence from stdout/exit_code.
-6. Call task_complete ONLY after you have run and verified the final output.
+6. STRICT COMPLETION RULE: you may ONLY call task_complete after a verification
+   command that returned exit_code=0. If your most recent run_command failed,
+   you MUST fix and re-verify first — the system will reject any task_complete
+   that follows a failed command.
+
+HTTP VERIFICATION — the sandbox has Python but may not have curl or wget.
+Always use Python for HTTP checks:
+    python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); print(r.status, r.read())"
+Never assume curl, wget, or httpie are installed.
 
 File paths are relative to /workspace. You are the only agent in this sandbox.
 """
@@ -300,6 +309,10 @@ async def run_agent(
         {"role": "user", "content": instruction},
     ]
 
+    # Track the exit code of the most recent run_command.
+    # task_complete is rejected when this is not None and != 0.
+    last_run_exit_code: int | None = None
+
     async def emit(event: AgentEvent) -> None:
         if on_event is not None:
             await on_event(event)
@@ -355,6 +368,8 @@ async def run_agent(
         )
 
         # ── Execute each tool call in order ───────────────────────────────────
+        step_rejected = False  # set when task_complete is blocked this step
+
         for tc in msg.tool_calls:
             try:
                 args = json.loads(tc.function.arguments)
@@ -370,7 +385,27 @@ async def run_agent(
                 )
             )
 
+            # ── Guard: block task_complete after a failed run_command ──────────
+            if tc.function.name == "task_complete" and last_run_exit_code not in (None, 0):
+                rejection = (
+                    f"task_complete REJECTED — your most recent run_command "
+                    f"returned exit_code={last_run_exit_code}. You must fix "
+                    f"the failing command and re-verify (exit_code=0) before "
+                    f"calling task_complete."
+                )
+                logger.warning("Blocked false task_complete at step %d (exit=%d)", step, last_run_exit_code)
+                await emit(AgentEvent(type="error", step=step, error=rejection))
+                messages.append(
+                    {"role": "tool", "tool_call_id": tc.id, "content": json.dumps({"ok": False, "error": rejection})}
+                )
+                step_rejected = True
+                break  # stop processing remaining tool calls; LLM will retry
+
             result = await execute_tool(tc.function.name, args, sandbox_id, provider)
+
+            # ── Track last run_command exit code ───────────────────────────────
+            if tc.function.name == "run_command":
+                last_run_exit_code = result.get("exit_code")
 
             await emit(
                 AgentEvent(
@@ -390,7 +425,7 @@ async def run_agent(
                 }
             )
 
-            # ── task_complete → return immediately ─────────────────────────────
+            # ── task_complete (guard passed) → done ────────────────────────────
             if tc.function.name == "task_complete" and result.get("status") == "complete":
                 await emit(
                     AgentEvent(
@@ -401,6 +436,9 @@ async def run_agent(
                     )
                 )
                 return result
+
+        if step_rejected:
+            continue  # give LLM another step to fix and re-verify
 
     # Exhausted max_steps without task_complete
     reason = f"Reached max_steps={_max_steps} without calling task_complete"

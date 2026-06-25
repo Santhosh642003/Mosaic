@@ -36,12 +36,20 @@ INSTRUCTION = textwrap.dedent("""\
 
     Steps:
     1. Write the application to main.py.
-    2. Install fastapi and uvicorn (pip install fastapi uvicorn).
-    3. Start the server on port 8000 in the background and wait for it to be
-       ready (hint: combine the server start, a sleep, and a curl into one
-       run_command call so the port has time to bind).
-    4. Verify that GET /health returns {"status": "ok"} by curling it.
+    2. Install fastapi and uvicorn (pip install fastapi uvicorn[standard]).
+    3. Start the server on port 8000 in the background and verify it responds —
+       combine server start + wait + HTTP check into ONE run_command so the
+       port has time to bind. Use Python urllib for the HTTP check (curl is NOT
+       available):
+           uvicorn main:app --host 0.0.0.0 --port 8000 &
+           sleep 2 &&
+           python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); print(r.status, r.read())"
+       The python check must print the response body and exit 0.
+    4. Confirm the HTTP response body contains "ok".
     5. Call task_complete with a summary of what you built and verified.
+
+    IMPORTANT: Do NOT use curl, wget, or any tool you have not explicitly
+    installed. The sandbox only has Python 3.11 and pip available by default.
 """)
 
 
@@ -146,7 +154,11 @@ async def on_event(event) -> None:  # noqa: ANN001
         print(f"{GREEN}{BOLD}{hr('═')}{RESET}\n")
 
     elif event.type == "error":
-        print(f"\n{RED}{BOLD}ERROR at step {event.step}: {event.error}{RESET}\n")
+        if "REJECTED" in event.error:
+            # Guard triggered — make it stand out
+            print(f"\n{MAGENTA}{BOLD}🚫 GUARD: {event.error}{RESET}\n")
+        else:
+            print(f"\n{RED}{BOLD}ERROR at step {event.step}: {event.error}{RESET}\n")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
