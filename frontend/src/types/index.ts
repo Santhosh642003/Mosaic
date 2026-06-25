@@ -142,6 +142,7 @@ export interface ServerToClientEvents {
   decomposition_complete: (tasks: Task[]) => void;
   decomposition_started: () => void;
   ai_response_stream: (payload: { chunk: string; done: boolean }) => void;
+  agent_response: (payload: { agentId: string; reply: string; edits: { path: string; content: string; summary?: string }[] }) => void;
   task_submitted: (payload: { taskId: string; memberId: string }) => void;
   all_tasks_done: () => void;
   merge_log_stream: (payload: { tag: 'info' | 'ok' | 'warn'; text: string }) => void;
@@ -157,6 +158,7 @@ export interface ClientToServerEvents {
   trigger_decomposition: (payload: { roomId?: string }) => void;
   trigger_merge: (payload: { roomId?: string }) => void;
   ai_prompt: (payload: { taskId?: string; prompt: string; contextCode?: string }) => void;
+  agent_action: (payload: { taskId?: string; agentId: string; prompt: string; files: Record<string, string> }) => void;
   assign_task: (payload: { taskId: string }) => void;
 }
 

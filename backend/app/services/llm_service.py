@@ -12,7 +12,7 @@ from groq import AsyncGroq
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
-from app.llm_schemas import MergeResult, TaskDecomposition
+from app.llm_schemas import AgentResult, MergeResult, TaskDecomposition
 
 logger = logging.getLogger(__name__)
 
@@ -324,6 +324,83 @@ async def merge_self_correct(
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         response_model=MergeResult,
         temperature=0.1,
+        max_tokens=8192,
+        max_retries=2,
+    )
+
+
+# ── In-editor agents ────────────────────────────────────────────────────────────
+
+# Each agent is a persona with a distinct job. The id is what the client sends.
+AGENT_PROMPTS: dict[str, str] = {
+    "builder": (
+        "You are Builder, an agent that writes and modifies code to implement the "
+        "developer's task. Produce complete, working, production-quality code. When "
+        "asked to build or change something, edit the relevant files directly."
+    ),
+    "reviewer": (
+        "You are Reviewer, a meticulous senior engineer. Review the current code for "
+        "bugs, style, and correctness. Prefer concrete fixes: when you spot an issue, "
+        "edit the file to fix it and explain why in your reply."
+    ),
+    "tester": (
+        "You are Tester, an agent that writes thorough automated tests for the task. "
+        "Create new test files covering the important cases. Match the project's "
+        "language and conventions."
+    ),
+    "debugger": (
+        "You are Debugger, an agent that diagnoses and fixes bugs. Identify the root "
+        "cause from the code and error description, then edit the files to fix it. "
+        "Explain the root cause concisely."
+    ),
+    "explainer": (
+        "You are Explainer, an agent that explains code and concepts clearly and "
+        "concisely. You do NOT modify files — always return an empty edits list."
+    ),
+}
+
+DEFAULT_AGENT = "builder"
+
+
+async def run_agent(
+    agent_id: str,
+    prompt: str,
+    task_context: str,
+    files: dict[str, str],
+) -> AgentResult:
+    """
+    Run a selected in-editor agent. The agent sees the task context and the
+    current file contents, and returns a chat reply plus any full-file edits.
+    """
+    persona = AGENT_PROMPTS.get(agent_id, AGENT_PROMPTS[DEFAULT_AGENT])
+
+    files_text = (
+        "\n\n".join(f"--- {path} ---\n{content}" for path, content in files.items())
+        or "(no files yet)"
+    )
+
+    system = (
+        f"{persona}\n\n"
+        "You are embedded in a collaborative IDE and are scoped to ONE task. "
+        "You may create or modify the task's files. Respond ONLY with valid JSON — "
+        "no markdown fences.\n"
+        'Schema: { "reply": str, "edits": [ { "path": str, "content": str, "summary": str } ] }\n'
+        "- reply: a short message to the developer (markdown allowed).\n"
+        "- edits: ONLY the files you created or changed. Put the COMPLETE new file "
+        "content in `content` (never a diff or partial snippet). Use [] when you make "
+        "no code changes."
+    )
+    user = (
+        f"{task_context}\n"
+        f"Current files:\n{files_text}\n\n"
+        f"Developer request: {prompt}"
+    )
+
+    return await _structured_complete(
+        model=settings.coding_model,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        response_model=AgentResult,
+        temperature=0.2,
         max_tokens=8192,
         max_retries=2,
     )

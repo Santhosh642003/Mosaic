@@ -98,6 +98,8 @@ export const rooms = {
   state: (code: string) => client.get<RoomState>(`/rooms/${code}/state`),
 
   list: () => client.get<Room[]>('/rooms'),
+
+  remove: (code: string) => client.delete(`/rooms/${code}`),
 };
 
 // ── Tasks ──────────────────────────────────────────────────────────────────────

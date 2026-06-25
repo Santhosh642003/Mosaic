@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, Check, ChevronRight, Send, Zap, Shield, TestTube, BookOpen, Clock, LogOut } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Send, Zap, Shield, TestTube, BookOpen, Clock, LogOut, Wrench, Eye, Bug } from 'lucide-react';
 import { MosaicLogo } from '@/components/shared/MosaicLogo';
 import { Avatar } from '@/components/shared/Avatar';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,15 @@ const QUICK_ACTIONS = [
   { icon: TestTube, label: 'Write tests' },
   { icon: BookOpen, label: 'Explain code' },
 ];
+
+// Selectable agent personas. The `id` is sent to the backend (AGENT_PROMPTS).
+const AGENTS = [
+  { id: 'builder',   name: 'Builder',   icon: Wrench,   color: '#4F8EF7', blurb: 'Writes & modifies code' },
+  { id: 'reviewer',  name: 'Reviewer',  icon: Eye,      color: '#A371F7', blurb: 'Reviews & refactors' },
+  { id: 'tester',    name: 'Tester',    icon: TestTube, color: '#3FB950', blurb: 'Writes tests' },
+  { id: 'debugger',  name: 'Debugger',  icon: Bug,      color: '#F85149', blurb: 'Finds & fixes bugs' },
+  { id: 'explainer', name: 'Explainer', icon: BookOpen, color: '#D29922', blurb: 'Explains code (no edits)' },
+] as const;
 
 
 function MobileGuard() {
@@ -52,24 +61,28 @@ export default function CodingSession() {
     navigate(user ? '/dashboard' : '/');
   };
 
-  const taskFiles = myTask?.files?.length
-    ? myTask.files.map((name) => ({
-        name,
-        lang: name.endsWith('.py') ? 'python'
-          : name.endsWith('.ts') || name.endsWith('.tsx') ? 'typescript'
-          : 'javascript',
-        active: false,
-      }))
-    : [];
-
-  const [activeFile, setActiveFile] = useState(taskFiles[0]?.name ?? '');
   const [editorCode, setEditorCode] = useState<Record<string, string>>(myTask?.code ?? {});
+  const [activeFile, setActiveFile] = useState('');
   const [isBlocked, setIsBlocked] = useState(false);
   const [input, setInput] = useState('');
   const [timer, setTimer] = useState(0);
   const [isMarking, setIsMarking] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<string>('builder');
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const activeAgent = AGENTS.find((a) => a.id === selectedAgent) ?? AGENTS[0];
+
+  // File tabs come from the task's owned files plus any files an agent created.
+  const fileNames = Array.from(
+    new Set([...(myTask?.files ?? []), ...Object.keys(editorCode)])
+  );
+  const taskFiles = fileNames.map((name) => ({
+    name,
+    lang: name.endsWith('.py') ? 'python'
+      : name.endsWith('.ts') || name.endsWith('.tsx') ? 'typescript'
+      : 'javascript',
+  }));
 
   const currentCode = editorCode[activeFile] ?? '';
 
@@ -116,19 +129,28 @@ export default function CodingSession() {
   useEffect(() => {
     connectSocket();
     const socket = getSocket();
-    socket.on('ai_response_stream', ({ chunk, done }) => {
-      if (done) {
-        finalizeChatStream();
-      } else {
-        appendChatChunk(chunk);
+
+    // Agent finished: drop its reply into the chat and apply any file edits
+    // directly to the editor (this is what makes it "agentic").
+    socket.on('agent_response', ({ reply, edits }) => {
+      appendChatChunk(reply || '(no response)');
+      finalizeChatStream();
+      if (edits && edits.length > 0) {
+        setEditorCode((prev) => {
+          const next = { ...prev };
+          for (const e of edits) next[e.path] = e.content;
+          return next;
+        });
+        setActiveFile(edits[0].path);
       }
     });
+
     // All teammates submitted — navigate everyone to merge
     socket.on('all_tasks_done', () => {
       navigate(`/rooms/${code}/merge`);
     });
     return () => {
-      socket.off('ai_response_stream');
+      socket.off('agent_response');
       socket.off('all_tasks_done');
     };
   }, [appendChatChunk, finalizeChatStream, navigate, code]);
@@ -152,7 +174,7 @@ export default function CodingSession() {
     setInput('');
     setIsChatStreaming(true);
 
-    // Placeholder streaming response (real: emit ai_prompt via socket)
+    // Placeholder assistant message that the agent's reply will fill in.
     const aiMsg: ChatMessage = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
@@ -162,10 +184,16 @@ export default function CodingSession() {
     };
     addChatMessage(aiMsg);
 
-    emit('ai_prompt', {
+    // Hand the selected agent the task context + the current file contents so
+    // it can read and rewrite them.
+    const files: Record<string, string> = {};
+    for (const f of taskFiles) files[f.name] = editorCode[f.name] ?? '';
+
+    emit('agent_action', {
       taskId: myTask?.id,
+      agentId: selectedAgent,
       prompt: text,
-      contextCode: JSON.stringify({ task: myTask }),
+      files,
     });
   };
 
@@ -410,17 +438,36 @@ export default function CodingSession() {
 
           {/* Right: AI chat */}
           <div className="w-72 flex-none border-l border-ms-subtle bg-ms-surface flex flex-col">
-            {/* Chat header */}
-            <div className="flex-none px-4 py-3 border-b border-ms-subtle">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded bg-ms-purple/20 flex items-center justify-center">
-                  <span className="text-ms-purple text-[10px] font-bold">AI</span>
-                </div>
-                <span className="text-xs font-bold">Mosaic AI</span>
+            {/* Chat header + agent picker */}
+            <div className="flex-none px-3 py-3 border-b border-ms-subtle">
+              <div className="flex items-center gap-2 px-1 mb-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-ms-fg3">AI agents</span>
                 <span className="ml-auto text-[10px] text-ms-green font-semibold">● Live</span>
               </div>
-              <div className="mt-1.5 text-[10px] text-ms-fg3">
-                Context: {myTask ? `${myTask.name} task + interface contracts` : 'No task assigned'}
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {AGENTS.map((a) => {
+                  const selected = a.id === selectedAgent;
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => setSelectedAgent(a.id)}
+                      title={a.blurb}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-semibold whitespace-nowrap transition-all',
+                        selected ? 'text-white' : 'text-ms-fg3 border-ms-border hover:text-ms-fg'
+                      )}
+                      style={selected ? { background: a.color, borderColor: a.color } : undefined}
+                    >
+                      <a.icon size={11} />
+                      {a.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 px-1 text-[10px] text-ms-fg3">
+                <span className="font-semibold" style={{ color: activeAgent.color }}>{activeAgent.name}</span>
+                {' · '}{activeAgent.blurb}
+                {myTask ? ` · scoped to ${myTask.name}` : ' · no task assigned'}
               </div>
             </div>
 

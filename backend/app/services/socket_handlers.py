@@ -490,3 +490,66 @@ async def handle_ai_prompt(sid: str, data: dict) -> None:
     except Exception as exc:
         logger.exception("ai_prompt error: %s", exc)
         await sio.emit("ai_response_stream", {"chunk": "", "done": True, "error": str(exc)}, to=sid)
+
+
+# ── agent_action (in-editor agentic AI) ─────────────────────────────────────────
+
+@sio.on("agent_action")
+async def handle_agent_action(sid: str, data: dict) -> None:
+    """
+    Client sends: { agentId, prompt, task_id | taskId?, files: { path: content } }
+    Runs the selected agent with full task context + current files and replies
+    with agent_response: { agentId, reply, edits: [{path, content, summary}] }.
+    """
+    prompt = (data.get("prompt") or "").strip()
+    agent_id = data.get("agentId") or data.get("agent_id") or "builder"
+    task_id = data.get("task_id") or data.get("taskId")
+    files = data.get("files") or {}
+    if not prompt:
+        return
+
+    # Build rich task context (description, tech, files, interface contracts).
+    task_context = ""
+    if task_id:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Task).where(Task.id == task_id))
+            task = result.scalar_one_or_none()
+            if task:
+                exposes = ", ".join(
+                    c.get("name") or c.get("signature") or "" for c in (task.exposes or [])
+                )
+                depends = ", ".join(
+                    c.get("name") or c.get("signature") or "" for c in (task.depends_on or [])
+                )
+                task_context = (
+                    f"Task: {task.name}\n"
+                    f"Description: {task.description}\n"
+                    f"Tech: {task.tech}\n"
+                    f"Files to own: {', '.join(task.files or [])}\n"
+                    f"This task exposes: {exposes or 'none'}\n"
+                    f"This task depends on: {depends or 'none'}\n"
+                )
+
+    from app.services.llm_service import run_agent
+    try:
+        result = await run_agent(agent_id, prompt, task_context, files)
+        await sio.emit(
+            "agent_response",
+            {
+                "agentId": agent_id,
+                "reply": result.reply,
+                "edits": [e.model_dump() for e in result.edits],
+            },
+            to=sid,
+        )
+    except Exception as exc:
+        logger.exception("agent_action error: %s", exc)
+        await sio.emit(
+            "agent_response",
+            {
+                "agentId": agent_id,
+                "reply": f"Sorry — I hit an error and couldn't finish: {exc}",
+                "edits": [],
+            },
+            to=sid,
+        )

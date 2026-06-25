@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Download, GitMerge, Users, Zap, Clock, ArrowRight } from 'lucide-react';
+import { Plus, Download, GitMerge, Users, Zap, Clock, ArrowRight, Trash2 } from 'lucide-react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,24 @@ export default function Dashboard() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [codebases, setCodebases] = useState<SavedCodebase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
+
+  const handleDelete = async (room: Room) => {
+    if (!window.confirm(`Delete "${room.name}"? This permanently removes the room and its codebase.`)) return;
+    setDeleting((s) => new Set(s).add(room.id));
+    try {
+      await roomsApi.remove(room.code);
+      setRooms((rs) => rs.filter((r) => r.id !== room.id));
+    } catch {
+      window.alert('Could not delete the room. Only the room lead can delete it.');
+    } finally {
+      setDeleting((s) => {
+        const next = new Set(s);
+        next.delete(room.id);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -112,33 +130,47 @@ export default function Dashboard() {
                 const href = room.status === 'complete'
                   ? `/rooms/${room.code}/merge`
                   : `/rooms/${room.code}/lobby`;
+                const isLead = user?.id === room.leadId;
+                const isDeleting = deleting.has(room.id);
 
                 return (
-                  <Link
+                  <div
                     key={room.id}
-                    to={href}
-                    className="flex items-center gap-4 p-4 rounded-xl border border-ms-border bg-ms-surface hover:border-ms-raised hover:-translate-y-0.5 transition-all group"
+                    className="flex items-center gap-4 p-4 rounded-xl border border-ms-border bg-ms-surface hover:border-ms-raised transition-all group"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-ms-raised border border-ms-border flex items-center justify-center text-xl flex-none">
-                      {roomEmoji(room, idx)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-bold text-ms-fg">{room.name}</span>
-                        <span className="font-mono text-[10px] text-ms-fg3">#{room.code}</span>
-                        <Badge variant={badge.variant}>{badge.label}</Badge>
+                    <Link to={href} className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-ms-raised border border-ms-border flex items-center justify-center text-xl flex-none">
+                        {roomEmoji(room, idx)}
                       </div>
-                      <p className="text-xs text-ms-fg3 truncate">{room.brief}</p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-none">
-                      <div className="flex items-center gap-1 text-xs text-ms-fg3">
-                        <Users size={12} />
-                        <span>{room.maxTeammates}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-bold text-ms-fg">{room.name}</span>
+                          <span className="font-mono text-[10px] text-ms-fg3">#{room.code}</span>
+                          <Badge variant={badge.variant}>{badge.label}</Badge>
+                        </div>
+                        <p className="text-xs text-ms-fg3 truncate">{room.brief}</p>
                       </div>
-                      <div className="text-xs text-ms-fg3">{timeAgo(room.createdAt)}</div>
-                      <ArrowRight size={14} className="text-ms-fg3 group-hover:text-ms-fg transition-colors" />
-                    </div>
-                  </Link>
+                      <div className="flex items-center gap-3 flex-none">
+                        <div className="flex items-center gap-1 text-xs text-ms-fg3">
+                          <Users size={12} />
+                          <span>{room.maxTeammates}</span>
+                        </div>
+                        <div className="text-xs text-ms-fg3">{timeAgo(room.createdAt)}</div>
+                      </div>
+                    </Link>
+                    {isLead ? (
+                      <button
+                        onClick={() => handleDelete(room)}
+                        disabled={isDeleting}
+                        title="Delete room"
+                        className="flex-none p-1.5 rounded-md text-ms-fg3 hover:text-ms-red hover:bg-ms-red/10 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    ) : (
+                      <ArrowRight size={14} className="flex-none text-ms-fg3 group-hover:text-ms-fg transition-colors" />
+                    )}
+                  </div>
                 );
               })}
             </div>

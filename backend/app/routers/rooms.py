@@ -6,13 +6,13 @@ import random
 import string
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth_utils import get_current_user, get_optional_user
 from app.config import settings
 from app.database import get_db, get_redis
-from app.models import Room, RoomMember, User
+from app.models import Merge, Room, RoomMember, Task, User
 from app.socket_manager import sio
 from app.schemas import (
     CreateRoomRequest,
@@ -231,3 +231,35 @@ async def get_room(code: str, db: AsyncSession = Depends(get_db)) -> Room:
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     return room
+
+
+# ── Delete room ────────────────────────────────────────────────────────────────
+
+@router.delete("/{code}")
+async def delete_room(
+    code: str,
+    db: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Permanently delete a room and everything in it (lead only)."""
+    code = code.upper()
+    result = await db.execute(select(Room).where(Room.code == code))
+    room = result.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if room.lead_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the room lead can delete this room")
+
+    # Break the task <-> member circular FK before deleting either side.
+    await db.execute(update(Task).where(Task.room_id == room.id).values(assigned_to=None))
+    await db.execute(update(RoomMember).where(RoomMember.room_id == room.id).values(task_id=None))
+    await db.execute(delete(Merge).where(Merge.room_id == room.id))
+    await db.execute(delete(Task).where(Task.room_id == room.id))
+    await db.execute(delete(RoomMember).where(RoomMember.room_id == room.id))
+    await db.execute(delete(Room).where(Room.id == room.id))
+    await redis.delete(ROOM_STATE_KEY.format(code=code))
+    await db.commit()
+
+    logger.info("room deleted: %s by %s", code, user.id)
+    return {"detail": "Room deleted"}
