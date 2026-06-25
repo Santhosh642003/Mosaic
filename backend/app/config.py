@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     coding_model: str = "llama-3.3-70b-versatile"
     merge_model: str = "llama-3.3-70b-versatile"
 
+    # ── Sandbox ───────────────────────────────────────────────────────────────
+    sandbox_provider: str = "docker"   # "e2b" | "docker"
+    e2b_api_key: str = ""
+    sandbox_timeout_seconds: int = 300
+    agent_max_steps: int = 25
+
     # ── Room settings ─────────────────────────────────────────────────────
     room_code_length: int = 6
     room_ttl_hours: int = 48

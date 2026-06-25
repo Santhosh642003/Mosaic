@@ -31,6 +31,10 @@ python-dotenv==1.0.1
 pydantic==2.8.2
 pydantic-settings==2.3.4
 
+# Sandbox providers
+e2b>=0.17.2                  # E2B cloud sandbox (primary)
+docker>=7.0.0                # Docker SDK (local fallback)
+
 # ZIP generation
 # stdlib zipfile — no extra package needed
 
