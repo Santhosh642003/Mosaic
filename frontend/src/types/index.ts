@@ -149,6 +149,7 @@ export interface ServerToClientEvents {
   merge_complete: (result: MergeResult) => void;
   merge_error: (payload: { message?: string }) => void;
   error: (payload: { code: string; message: string }) => void;
+  agent_event: (payload: AgentEventPayload) => void;
 }
 
 export interface ClientToServerEvents {
@@ -160,6 +161,28 @@ export interface ClientToServerEvents {
   ai_prompt: (payload: { taskId?: string; prompt: string; contextCode?: string }) => void;
   agent_action: (payload: { taskId?: string; agentId: string; prompt: string; files: Record<string, string> }) => void;
   assign_task: (payload: { taskId: string }) => void;
+  agent_run: (payload: { instruction: string }) => void;
+}
+
+// ─── Agent playground ─────────────────────────────────────────────────────────
+
+export interface AgentEventPayload {
+  type: 'step' | 'thinking' | 'tool_call' | 'tool_result' | 'complete' | 'error' | 'sandbox_ready' | 'sandbox_destroyed';
+  step: number;
+  // thinking
+  content?: string;
+  // tool_call / tool_result
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  tool_result?: Record<string, unknown>;
+  // complete
+  summary?: string;
+  // error
+  error?: string;
+  // sandbox_ready
+  sandbox_id?: string;
+  // files mirror (included whenever files change)
+  files?: Record<string, string>;
 }
 
 // ─── API responses ────────────────────────────────────────────────────────────

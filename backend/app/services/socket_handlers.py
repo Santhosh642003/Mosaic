@@ -553,3 +553,111 @@ async def handle_agent_action(sid: str, data: dict) -> None:
             },
             to=sid,
         )
+
+# ── agent_run (standalone playground — Step 3) ────────────────────────────────
+#
+# Client emits:  { instruction: str }
+# Server emits:  agent_event { type, step, ... } back to the same SID only.
+#
+# Each AgentEvent is forwarded as-is, plus a `files` snapshot whenever
+# a file is written/edited/deleted so the frontend can update the editor pane.
+
+import asyncio as _asyncio
+
+
+@sio.on("agent_run")
+async def handle_agent_run(sid: str, data: dict) -> None:
+    """Kick off a sandbox agent run in a background task."""
+    instruction = (data.get("instruction") or "").strip()
+    if not instruction:
+        await sio.emit(
+            "agent_event",
+            {"type": "error", "step": 0, "error": "No instruction provided."},
+            to=sid,
+        )
+        return
+    _asyncio.create_task(_agent_run_task(sid, instruction))
+
+
+async def _agent_run_task(sid: str, instruction: str) -> None:
+    from app.services.agent import run_agent, AgentEvent
+    from app.services.sandbox import get_provider
+
+    provider = get_provider()
+    sandbox_id: str | None = None
+
+    # Local file mirror so the frontend always has current content.
+    files: dict[str, str] = {}
+    last_tool_name: str = ""
+    last_tool_args: dict = {}
+
+    async def on_event(event: AgentEvent) -> None:
+        nonlocal last_tool_name, last_tool_args
+
+        payload: dict = {"type": event.type, "step": event.step}
+
+        if event.type == "thinking":
+            payload["content"] = event.content
+
+        elif event.type == "tool_call":
+            last_tool_name = event.tool_name
+            last_tool_args = event.tool_args
+            payload["tool_name"] = event.tool_name
+            payload["tool_args"] = event.tool_args
+
+            # Reflect write_file / delete_file immediately (args contain content)
+            if event.tool_name == "write_file":
+                path = event.tool_args.get("path", "")
+                content = event.tool_args.get("content", "")
+                if path:
+                    files[path] = content
+                    payload["files"] = dict(files)
+            elif event.tool_name == "delete_file":
+                path = event.tool_args.get("path", "")
+                files.pop(path, None)
+                payload["files"] = dict(files)
+
+        elif event.type == "tool_result":
+            payload["tool_name"] = event.tool_name
+            payload["tool_result"] = event.tool_result
+
+            # Apply edit_file diff to the local mirror
+            if last_tool_name == "edit_file" and event.tool_result.get("ok"):
+                path = last_tool_args.get("path", "")
+                old_str = last_tool_args.get("old_str", "")
+                new_str = last_tool_args.get("new_str", "")
+                if path and path in files:
+                    files[path] = files[path].replace(old_str, new_str, 1)
+                    payload["files"] = dict(files)
+
+        elif event.type == "complete":
+            payload["summary"] = event.summary
+            payload["files"] = dict(files)
+
+        elif event.type == "error":
+            payload["error"] = event.error
+
+        await sio.emit("agent_event", payload, to=sid)
+
+    try:
+        sandbox_id = await provider.create(room_id="playground", task_id="agent")
+        await sio.emit(
+            "agent_event",
+            {"type": "sandbox_ready", "step": 0, "sandbox_id": sandbox_id[:12]},
+            to=sid,
+        )
+        await run_agent(instruction, sandbox_id, provider, on_event=on_event)
+    except Exception as exc:
+        logger.exception("_agent_run_task error: %s", exc)
+        await sio.emit(
+            "agent_event",
+            {"type": "error", "step": 0, "error": str(exc)},
+            to=sid,
+        )
+    finally:
+        if sandbox_id:
+            try:
+                await provider.destroy(sandbox_id)
+            except Exception:
+                pass
+        await sio.emit("agent_event", {"type": "sandbox_destroyed", "step": 0}, to=sid)

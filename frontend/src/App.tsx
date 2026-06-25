@@ -16,7 +16,8 @@ const MergePage    = lazy(() => import('@/pages/Merge'));
 const Profile      = lazy(() => import('@/pages/Profile'));
 const SettingsPage = lazy(() => import('@/pages/Settings'));
 const Errors       = lazy(() => import('@/pages/Errors'));
-const NotFound     = lazy(() => import('@/pages/NotFound'));
+const NotFound          = lazy(() => import('@/pages/NotFound'));
+const AgentPlayground   = lazy(() => import('@/pages/AgentPlayground'));
 
 function PageLoader() {
   return (
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/rooms/:code/code" element={<CodingSession />} />
           <Route path="/rooms/:code/merge" element={<MergePage />} />
 
+          <Route path="/agent" element={<AgentPlayground />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
