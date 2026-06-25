@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # ── Token budget helpers ──────────────────────────────────────────────────────
 
 _TOOL_OUTPUT_LIMIT = 400  # chars per stdout/stderr field before truncation
+_HISTORY_MAX_MESSAGES = 60  # trim older messages once history exceeds this
 
 
 def _truncate(text: str, limit: int = _TOOL_OUTPUT_LIMIT) -> str:
@@ -37,6 +38,28 @@ def _truncate(text: str, limit: int = _TOOL_OUTPUT_LIMIT) -> str:
     half = limit // 2
     omitted = len(text) - limit
     return f"{text[:half]}\n… [{omitted} chars omitted] …\n{text[-half:]}"
+
+
+def _trim_history(history: list[dict]) -> list[dict]:
+    """Keep the conversation within token budget by dropping old middle messages.
+
+    Retains the first 4 messages (original instruction + first LLM response)
+    and the most recent (_HISTORY_MAX_MESSAGES - 6) messages, replacing the
+    dropped section with a summary placeholder.
+    """
+    if len(history) <= _HISTORY_MAX_MESSAGES:
+        return history
+    keep_head = 4
+    keep_tail = _HISTORY_MAX_MESSAGES - keep_head - 1
+    dropped = len(history) - keep_head - keep_tail
+    placeholder = {
+        "role": "user",
+        "content": (
+            f"[{dropped} earlier messages were compressed to stay within context limits. "
+            "The current workspace files reflect all prior work.]"
+        ),
+    }
+    return history[:keep_head] + [placeholder] + history[-keep_tail:]
 
 
 def _truncate_tool_result(result: dict) -> dict:
@@ -314,6 +337,8 @@ async def run_agent(
     sandbox_id: str,
     provider: SandboxProvider,
     *,
+    extra_system: str = "",
+    prior_messages: list[dict] | None = None,
     model: str | None = None,
     max_steps: int | None = None,
     on_event: Callable[[AgentEvent], Awaitable[None]] | None = None,
@@ -321,17 +346,33 @@ async def run_agent(
     """
     Drive the LLM tool loop until task_complete or max_steps.
 
-    Returns the task_complete payload on success, or a dict with
-    {"status": "incomplete", "reason": ...} on failure / cap.
+    extra_system: additional context appended to SYSTEM_PROMPT (task description,
+        interface contracts, etc.).
+    prior_messages: prior conversation history *excluding* the system message.
+        When provided, a new user turn is appended so the agent continues from
+        where it left off (persistent/iterative session).
+
+    Returns the payload on success/failure, always including a "messages" key
+    (history without the system message) so callers can persist and resume.
     """
     _model = model or settings.coding_model
     _max_steps = max_steps or settings.agent_max_steps
     client = get_llm_client()  # single shared client — base_url from LLM_BASE_URL
 
-    messages: list[dict] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": instruction},
-    ]
+    system_content = SYSTEM_PROMPT + ("\n\n" + extra_system if extra_system else "")
+
+    if prior_messages is not None:
+        trimmed = _trim_history(prior_messages)
+        messages: list[dict] = [
+            {"role": "system", "content": system_content},
+            *trimmed,
+            {"role": "user", "content": instruction},
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": instruction},
+        ]
 
     # Track the exit code of the most recent run_command.
     # task_complete is rejected when this is not None and != 0.
@@ -358,7 +399,7 @@ async def run_agent(
             err = f"LLM call failed at step {step}: {exc}"
             logger.error(err)
             await emit(AgentEvent(type="error", step=step, error=err))
-            return {"status": "error", "reason": err}
+            return {"status": "error", "reason": err, "messages": messages[1:]}
 
         msg = response.choices[0].message
 
@@ -370,7 +411,7 @@ async def run_agent(
         if not msg.tool_calls:
             reason = msg.content or "(no tool calls and no explanation)"
             logger.warning("Agent produced no tool calls at step %d — stopping", step)
-            return {"status": "incomplete", "reason": reason}
+            return {"status": "incomplete", "reason": reason, "messages": messages[1:]}
 
         # ── Append assistant message (preserve tool_calls for context) ─────────
         messages.append(
@@ -459,7 +500,7 @@ async def run_agent(
                         files=result.get("files", []),
                     )
                 )
-                return result
+                return {**result, "messages": messages[1:]}
 
         if step_rejected:
             continue  # give LLM another step to fix and re-verify
@@ -468,4 +509,4 @@ async def run_agent(
     reason = f"Reached max_steps={_max_steps} without calling task_complete"
     logger.warning(reason)
     await emit(AgentEvent(type="error", step=_max_steps, error=reason))
-    return {"status": "incomplete", "reason": reason}
+    return {"status": "incomplete", "reason": reason, "messages": messages[1:]}

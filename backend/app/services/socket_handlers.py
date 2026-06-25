@@ -707,3 +707,230 @@ async def handle_terminal_exec(sid: str, data: dict) -> None:
             {"cmd": cmd, "stdout": "", "stderr": str(exc), "exit_code": -1, "source": "user"},
             to=sid,
         )
+
+
+# ── task_agent_prompt / task_session_end / task_terminal_exec ─────────────────
+#
+# Persistent, iterative per-task agent sessions backed by the REAL sandbox +
+# run_agent loop (services/agent.py).  One session per socket SID:
+#
+#   task_agent_prompt  { prompt, taskId? }  → streams agent_event payloads
+#   task_session_end   {}                   → destroy sandbox (Mark-as-Done / Leave)
+#   task_terminal_exec { cmd }              → run user command in task sandbox
+#
+# Session lifetime: create on first task_agent_prompt, persist across prompts,
+# destroy on task_session_end or disconnect.
+
+from dataclasses import dataclass, field as _field
+
+
+@dataclass
+class _TaskSession:
+    sandbox_id: str
+    history: list[dict]          # accumulated messages (excl system msg)
+    files: dict[str, str]        # live file mirror — sent with every agent_event
+    extra_system: str = ""       # task context injected into system prompt
+    last_tool_name: str = ""
+    last_tool_args: dict = _field(default_factory=dict)
+
+
+# sid → active task session
+_task_sessions: dict[str, _TaskSession] = {}
+
+
+@sio.on("task_agent_prompt")
+async def handle_task_agent_prompt(sid: str, data: dict) -> None:
+    """Start or continue a persistent task coding session."""
+    prompt = (data.get("prompt") or "").strip()
+    if not prompt:
+        return
+    task_id = data.get("task_id") or data.get("taskId")
+    _asyncio.create_task(_task_agent_task(sid, prompt, task_id))
+
+
+async def _task_agent_task(sid: str, prompt: str, task_id: str | None) -> None:
+    from app.services.agent import run_agent, AgentEvent
+    from app.services.sandbox import get_provider
+
+    provider = get_provider()
+
+    # ── Get or create session ─────────────────────────────────────────────────
+    session = _task_sessions.get(sid)
+    if session is None:
+        # Build task context from DB
+        extra_system = ""
+        if task_id:
+            try:
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(select(Task).where(Task.id == task_id))
+                    task = result.scalar_one_or_none()
+                    if task:
+                        exposes_str = "\n".join(
+                            f"  - {c.get('name', '')} ({c.get('type', '')}): {c.get('description', '')}"
+                            for c in (task.exposes or [])
+                        )
+                        depends_str = "\n".join(
+                            f"  - {c.get('name', '')} (provided by {c.get('provided_by', '?')})"
+                            for c in (task.depends_on or [])
+                        )
+                        extra_system = (
+                            f"TASK CONTEXT\n"
+                            f"============\n"
+                            f"Task name: {task.name}\n"
+                            f"Description: {task.description}\n"
+                            f"Tech: {task.tech or 'not specified'}\n"
+                            f"Files this task owns: {', '.join(task.files or [])}\n"
+                            f"Interface this task MUST expose:\n{exposes_str or '  (none)'}\n"
+                            f"Interfaces this task depends on (from teammates):\n{depends_str or '  (none)'}\n\n"
+                            f"Scope: implement ONLY the files listed above. "
+                            f"Honor every interface in 'exposes' exactly. "
+                            f"Do not modify teammate files."
+                        )
+            except Exception as exc:
+                logger.warning("Could not fetch task %s: %s", task_id, exc)
+
+        # Create sandbox
+        try:
+            sandbox_id = await provider.create(
+                room_id=f"task-{task_id or 'unknown'}",
+                task_id=task_id or "agent",
+            )
+        except Exception as exc:
+            await sio.emit(
+                "agent_event",
+                {"type": "error", "step": 0, "error": f"Failed to create sandbox: {exc}"},
+                to=sid,
+            )
+            return
+
+        session = _TaskSession(
+            sandbox_id=sandbox_id,
+            history=[],
+            files={},
+            extra_system=extra_system,
+        )
+        _task_sessions[sid] = session
+
+        await sio.emit(
+            "agent_event",
+            {"type": "sandbox_ready", "step": 0, "sandbox_id": sandbox_id[:12]},
+            to=sid,
+        )
+
+    # ── Build on_event callback ───────────────────────────────────────────────
+    async def on_event(event: AgentEvent) -> None:
+        payload: dict = {"type": event.type, "step": event.step}
+
+        if event.type == "thinking":
+            payload["content"] = event.content
+
+        elif event.type == "tool_call":
+            session.last_tool_name = event.tool_name
+            session.last_tool_args = event.tool_args
+            payload["tool_name"] = event.tool_name
+            payload["tool_args"] = event.tool_args
+
+            if event.tool_name == "write_file":
+                path = event.tool_args.get("path", "")
+                content = event.tool_args.get("content", "")
+                if path:
+                    session.files[path] = content
+                    payload["files"] = dict(session.files)
+            elif event.tool_name == "delete_file":
+                path = event.tool_args.get("path", "")
+                session.files.pop(path, None)
+                payload["files"] = dict(session.files)
+
+        elif event.type == "tool_result":
+            payload["tool_name"] = event.tool_name
+            payload["tool_result"] = event.tool_result
+
+            if session.last_tool_name == "edit_file" and event.tool_result.get("ok"):
+                path = session.last_tool_args.get("path", "")
+                old_str = session.last_tool_args.get("old_str", "")
+                new_str = session.last_tool_args.get("new_str", "")
+                if path and path in session.files:
+                    session.files[path] = session.files[path].replace(old_str, new_str, 1)
+                    payload["files"] = dict(session.files)
+
+        elif event.type == "complete":
+            payload["summary"] = event.summary
+            payload["files"] = dict(session.files)
+
+        elif event.type == "error":
+            payload["error"] = event.error
+
+        await sio.emit("agent_event", payload, to=sid)
+
+    # ── Run the real agent loop ───────────────────────────────────────────────
+    try:
+        result = await run_agent(
+            prompt,
+            session.sandbox_id,
+            provider,
+            extra_system=session.extra_system,
+            prior_messages=session.history if session.history else None,
+            on_event=on_event,
+        )
+        # Persist updated history for the next turn
+        if "messages" in result:
+            session.history = result["messages"]
+    except Exception as exc:
+        logger.exception("_task_agent_task error: %s", exc)
+        await sio.emit(
+            "agent_event",
+            {"type": "error", "step": 0, "error": str(exc)},
+            to=sid,
+        )
+
+
+@sio.on("task_session_end")
+async def handle_task_session_end(sid: str, data: dict) -> None:
+    """Destroy the task sandbox and clear the session (called on Mark-as-Done or Leave)."""
+    session = _task_sessions.pop(sid, None)
+    if session:
+        from app.services.sandbox import get_provider
+        try:
+            await get_provider().destroy(session.sandbox_id)
+        except Exception as exc:
+            logger.warning("Failed to destroy task sandbox %s: %s", session.sandbox_id, exc)
+    await sio.emit("agent_event", {"type": "sandbox_destroyed", "step": 0}, to=sid)
+
+
+@sio.on("task_terminal_exec")
+async def handle_task_terminal_exec(sid: str, data: dict) -> None:
+    """Run a user-typed command in the active task sandbox."""
+    cmd = (data.get("cmd") or "").strip()
+    if not cmd:
+        return
+
+    session = _task_sessions.get(sid)
+    if not session:
+        await sio.emit(
+            "terminal_result",
+            {"cmd": cmd, "stdout": "", "stderr": "No active task sandbox.", "exit_code": -1, "source": "user"},
+            to=sid,
+        )
+        return
+
+    from app.services.sandbox import get_provider
+    try:
+        result = await get_provider().run_command(session.sandbox_id, cmd)
+        await sio.emit(
+            "terminal_result",
+            {
+                "cmd": cmd,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.exit_code,
+                "source": "user",
+            },
+            to=sid,
+        )
+    except Exception as exc:
+        logger.exception("task_terminal_exec error: %s", exc)
+        await sio.emit(
+            "terminal_result",
+            {"cmd": cmd, "stdout": "", "stderr": str(exc), "exit_code": -1, "source": "user"},
+            to=sid,
+        )

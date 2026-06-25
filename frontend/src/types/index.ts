@@ -164,6 +164,10 @@ export interface ClientToServerEvents {
   assign_task: (payload: { taskId: string }) => void;
   agent_run: (payload: { instruction: string }) => void;
   terminal_exec: (payload: { cmd: string }) => void;
+  // Task coding session (real sandbox + agent loop)
+  task_agent_prompt: (payload: { prompt: string; taskId?: string }) => void;
+  task_session_end: (payload: Record<string, never>) => void;
+  task_terminal_exec: (payload: { cmd: string }) => void;
 }
 
 // ─── Agent playground ─────────────────────────────────────────────────────────
