@@ -5,7 +5,7 @@ import { Avatar } from '@/components/shared/Avatar';
 import { RoomHeader } from '@/components/shared/RoomHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useTaskStore } from '@/stores/taskStore';
+import { useTaskStore, normalizeTask } from '@/stores/taskStore';
 import { useRoomStore } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
 import { getSocket, connectSocket } from '@/lib/socket';
@@ -155,9 +155,12 @@ function TaskCard({ task, index, onAssign, myAssignment, myName, allTasks }: {
 export default function Decomposition() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
-  const { tasks, setTasks, assignTask, myTaskId, setIsDecomposing, isDecomposing } = useTaskStore();
+  const { tasks, setTasks, setMyTaskId, assignTask, myTaskId, setIsDecomposing, isDecomposing } = useTaskStore();
   const { room, members, myMemberId } = useRoomStore();
   const user = useUser();
+
+  const [decompError, setDecompError] = useState<string | null>(null);
+  const isLead = !!(user && room && user.id === room.leadId);
 
   // My display name — from the room member record (works for guests) or the
   // authenticated user. Used to highlight tasks the AI suggested for me.
@@ -193,63 +196,61 @@ export default function Decomposition() {
     const token = localStorage.getItem('access_token');
     if (code) socket.emit('join_room', { code, token });
 
+    // Shared loader: normalize raw tasks, recover my assignment, reveal cards.
+    const applyTasks = (rawTasks: Record<string, unknown>[]) => {
+      if (!rawTasks.length) return;
+      const normalized = rawTasks.map(normalizeTask);
+      clearInterval(streamRef.current!);
+      clearInterval(revealRef.current!);
+      setDecompError(null);
+      setTasks(normalized);
+      setIsDecomposing(false);
+
+      // Recover which task is mine (survives refresh / missed socket events).
+      const mine = normalized.find((t) => t.assignedTo && t.assignedTo === myMemberId);
+      if (mine) setMyTaskId(mine.id);
+
+      // Reveal real tasks one by one
+      let r = 0;
+      setRevealed(0);
+      revealRef.current = setInterval(() => {
+        r++;
+        setRevealed(r);
+        if (r >= normalized.length) clearInterval(revealRef.current!);
+      }, 200);
+    };
+
     // Real-time task assignment updates from other members
     socket.on('task_assigned', (payload) => {
-      useTaskStore.getState().setTasks(
-        useTaskStore.getState().tasks.map((t) =>
+      const store = useTaskStore.getState();
+      store.setTasks(
+        store.tasks.map((t) =>
           t.id === payload.task_id
             ? { ...t, assignedTo: payload.assigned_to, assigneeName: payload.assignee_name, status: 'in_progress' as const }
             : t
         )
       );
+      // If the assignment is mine, remember it.
+      if (payload.assigned_to && payload.assigned_to === useRoomStore.getState().myMemberId) {
+        store.setMyTaskId(payload.task_id);
+      }
     });
 
-    socket.on('decomposition_stream', ({ chunk }: { chunk: string }) => {
-      if (chunk) setStreamIdx((i) => Math.min(i + 1, STREAM_MSGS.length - 1));
+    socket.on('decomposition_stream', (payload: { chunk?: string; error?: string }) => {
+      if (payload.error) {
+        clearInterval(streamRef.current!);
+        setIsDecomposing(false);
+        setDecompError(payload.error);
+        return;
+      }
+      if (payload.chunk) setStreamIdx((i) => Math.min(i + 1, STREAM_MSGS.length - 1));
     });
 
     socket.on('decomposition_complete', (data: unknown) => {
       // Backend sends { tasks: [...], room_status: "coding" }
       const d = data as Record<string, unknown>;
       const rawTasks = (Array.isArray(d) ? d : ((d.tasks ?? []) as unknown[])) as Record<string, unknown>[];
-
-      const normalized = rawTasks.map((t) => ({
-        id: t.id as string,
-        roomId: (t.room_id ?? t.roomId ?? '') as string,
-        name: t.name as string,
-        description: t.description as string,
-        tech: (t.tech ?? '') as string,
-        complexity: (() => {
-          const c = ((t.complexity ?? 'medium') as string);
-          return (c.charAt(0).toUpperCase() + c.slice(1)) as 'Low' | 'Medium' | 'High';
-        })(),
-        color: (t.color ?? '#4F8EF7') as string,
-        files: (t.files ?? []) as string[],
-        exposes: ((t.exposes ?? []) as Record<string, string>[]).map((e) => ({
-          signature: (e.name ?? e.signature ?? '') as string,
-          description: (e.description ?? '') as string,
-        })),
-        dependsOn: ((t.depends_on ?? t.dependsOn ?? []) as Record<string, string>[]).map((d) => ({
-          signature: (d.name ?? d.signature ?? '') as string,
-          taskId: (d.provided_by ?? d.taskId ?? '') as string,
-        })),
-        assignedTo: (t.assigned_to ?? t.assignedTo) as string | undefined,
-        suggestedAssignee: (t.suggested_assignee ?? t.suggestedAssignee) as string | undefined,
-        status: (t.status ?? 'unassigned') as 'unassigned' | 'in_progress' | 'done',
-        code: (t.code ?? {}) as Record<string, string>,
-      }));
-
-      clearInterval(streamRef.current!);
-      clearInterval(revealRef.current!);
-      setTasks(normalized);
-      setIsDecomposing(false);
-      // Reveal real tasks one by one
-      let r = 0;
-      revealRef.current = setInterval(() => {
-        r++;
-        setRevealed(r);
-        if (r >= normalized.length) clearInterval(revealRef.current!);
-      }, 200);
+      applyTasks(rawTasks);
     });
 
     // If real tasks already loaded (page refresh), show them immediately
@@ -260,23 +261,18 @@ export default function Decomposition() {
     }
 
     // HTTP fallback: poll every 4s in case the socket event was missed
-    // (e.g. page navigated before backend finished emitting)
+    // (e.g. page navigated before backend finished emitting). Stops as soon
+    // as tasks exist so it never clobbers freshly-arrived socket data.
     const pollRef = setInterval(async () => {
-      if (!code) return;
+      if (!code || useTaskStore.getState().tasks.length > 0) {
+        clearInterval(pollRef);
+        return;
+      }
       try {
         const res = await tasksApi.list(code);
         if (res.data && res.data.length > 0) {
           clearInterval(pollRef);
-          clearInterval(streamRef.current!);
-          clearInterval(revealRef.current!);
-          setTasks(res.data);
-          setIsDecomposing(false);
-          let r = 0;
-          revealRef.current = setInterval(() => {
-            r++;
-            setRevealed(r);
-            if (r >= res.data.length) clearInterval(revealRef.current!);
-          }, 200);
+          applyTasks(res.data as unknown as Record<string, unknown>[]);
         }
       } catch {
         // backend not ready yet, retry next tick
@@ -337,9 +333,33 @@ export default function Decomposition() {
             </div>
           )}
 
+          {/* Decomposition error */}
+          {decompError && (
+            <div className="flex items-start gap-3 mb-6 px-4 py-3 rounded-lg border border-ms-red/30 bg-ms-red/5">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-ms-red mb-1">Decomposition failed</p>
+                <p className="text-xs text-ms-fg3">{decompError}</p>
+              </div>
+              {isLead && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setDecompError(null);
+                    setIsDecomposing(true);
+                    setStreamIdx(0);
+                    getSocket().emit('trigger_decomposition', { roomId: room?.id ?? '' });
+                  }}
+                >
+                  Retry
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Task cards */}
           <div className="space-y-4">
-            {visibleTasks.length === 0 && !isDecomposing && (
+            {visibleTasks.length === 0 && !isDecomposing && !decompError && (
               <div className="rounded-xl border border-dashed border-ms-border bg-ms-surface p-10 text-center">
                 <p className="text-sm text-ms-fg3">No tasks yet — waiting for decomposition to complete.</p>
               </div>

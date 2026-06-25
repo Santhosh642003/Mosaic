@@ -21,6 +21,7 @@ function normalizeMember(m: Record<string, unknown>): RoomMember {
     avatarColor: avatarColor(name),
     role: (m.role ?? 'member') as MemberRole,
     status: (m.status ?? 'waiting') as MemberStatus,
+    skills: (m.skills ?? undefined) as string | undefined,
     isGuest: (m.is_guest ?? m.isGuest ?? false) as boolean,
   };
 }
@@ -65,9 +66,10 @@ export default function Lobby() {
 
     socket.on('teammate_status_update', (payload: { member_id?: string; memberId?: string; status: MemberStatus }) => {
       const id = payload.member_id ?? payload.memberId ?? '';
-      setMembers(
-        members.map((m) => (m.id === id ? { ...m, status: payload.status } : m))
-      );
+      // Read the latest members from the store — the closure's `members` is
+      // stale (the effect only re-runs on `code`), so mapping over it would
+      // wipe members that joined after mount.
+      useRoomStore.getState().updateMemberStatus(id, payload.status);
     });
 
     // Host started decomposition — all members navigate together
