@@ -72,6 +72,8 @@ async def get_merge_result(
         merged_files=merge.merged_files or {},
         diff_report=merge.diff_report,
         conflicts=merge.conflicts,
+        attempt=merge.attempt,
+        run_result=merge.run_result,
     )
 
 

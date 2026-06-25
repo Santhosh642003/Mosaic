@@ -196,6 +196,8 @@ class MergeResponse(BaseModel):
     merged_files: dict[str, Any] = {}
     diff_report: list[dict[str, Any]] | None = None
     conflicts: list[dict[str, Any]] | None = None
+    attempt: int | None = None
+    run_result: dict[str, Any] | None = None
 
 
 # ── GitHub push ───────────────────────────────────────────────────────────────

@@ -92,6 +92,16 @@ export interface Task {
 
 export type MergePhase = 'idle' | 'merging' | 'complete' | 'failed';
 
+export interface MergeRunResult {
+  ok: boolean | null;
+  cmd: string | null;
+  stdout?: string;
+  stderr?: string;
+  exit_code?: number;
+  error?: string;
+  note?: string;
+}
+
 export interface DiffEntry {
   path: string;
   operation: 'added' | 'modified' | 'removed';
@@ -113,6 +123,8 @@ export interface MergeResult {
   mergedFiles: Record<string, string>;
   diffReport: DiffEntry[];
   conflicts: Conflict[];
+  attempt?: number;
+  runResult?: MergeRunResult;
   createdAt: string;
 }
 
@@ -146,8 +158,10 @@ export interface ServerToClientEvents {
   task_submitted: (payload: { taskId: string; memberId: string }) => void;
   all_tasks_done: () => void;
   merge_log_stream: (payload: { tag: 'info' | 'ok' | 'warn'; text: string }) => void;
-  merge_complete: (result: MergeResult) => void;
+  merge_terminal: (payload: { cmd: string; stdout?: string; stderr?: string; exit_code?: number; done?: boolean; source: string }) => void;
+  merge_complete: (payload: { merge_id: string; attempt: number; file_count: number; conflict_count: number; run_result: MergeRunResult; download_url: string }) => void;
   merge_error: (payload: { message?: string }) => void;
+  coding_reopened: (payload: { room_code: string }) => void;
   error: (payload: { code: string; message: string }) => void;
   agent_event: (payload: AgentEventPayload) => void;
   terminal_result: (payload: TerminalResultPayload) => void;
@@ -159,6 +173,7 @@ export interface ClientToServerEvents {
   submit_task: (payload: { taskId: string; code: Record<string, string> }) => void;
   trigger_decomposition: (payload: { roomId?: string }) => void;
   trigger_merge: (payload: { roomId?: string }) => void;
+  reopen_coding: (payload: Record<string, never>) => void;
   ai_prompt: (payload: { taskId?: string; prompt: string; contextCode?: string }) => void;
   agent_action: (payload: { taskId?: string; agentId: string; prompt: string; files: Record<string, string> }) => void;
   assign_task: (payload: { taskId: string }) => void;

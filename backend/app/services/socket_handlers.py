@@ -803,10 +803,25 @@ async def _task_agent_task(sid: str, prompt: str, task_id: str | None) -> None:
             )
             return
 
+        # Seed sandbox from task.code (last submitted files) so re-entry after a
+        # merge iteration starts with the member's existing work, not a blank sandbox.
+        seeded_files: dict[str, str] = {}
+        if task_id:
+            try:
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(select(Task).where(Task.id == task_id))
+                    task_row = result.scalar_one_or_none()
+                    if task_row and task_row.code:
+                        for path, content in task_row.code.items():
+                            await provider.write_file(sandbox_id, path, content)
+                        seeded_files = dict(task_row.code)
+            except Exception as exc:
+                logger.warning("Could not seed sandbox from task.code: %s", exc)
+
         session = _TaskSession(
             sandbox_id=sandbox_id,
             history=[],
-            files={},
+            files=seeded_files,
             extra_system=extra_system,
         )
         _task_sessions[sid] = session
@@ -934,3 +949,54 @@ async def handle_task_terminal_exec(sid: str, data: dict) -> None:
             {"cmd": cmd, "stdout": "", "stderr": str(exc), "exit_code": -1, "source": "user"},
             to=sid,
         )
+
+
+# ── reopen_coding ─────────────────────────────────────────────────────────────
+#
+# Lead can reopen the coding phase after a failed / unsatisfactory merge run.
+# Task sandboxes are NOT destroyed — members re-enter CodingSession and their
+# sandbox is seeded from task.code (latest submission).
+
+@sio.on("reopen_coding")
+async def handle_reopen_coding(sid: str, data: dict) -> None:
+    """Lead reopens coding after a merge attempt. Broadcasts coding_reopened to room."""
+    room_code, _ = await _get_member_and_room(sid)
+    if not room_code:
+        return
+
+    async with AsyncSessionLocal() as db:
+        room_result = await db.execute(select(Room).where(Room.code == room_code))
+        room = room_result.scalar_one_or_none()
+        if not room:
+            return
+
+        async with sio.session(sid) as sess:
+            user_id = sess.get("user_id")
+        if room.lead_id != user_id:
+            await sio.emit("error", {"message": "Only the lead can reopen coding"}, to=sid)
+            return
+
+        # Reset all done-task members back to coding so they can re-enter
+        member_result = await db.execute(
+            select(RoomMember).where(RoomMember.room_id == room.id, RoomMember.status == "done")
+        )
+        members = member_result.scalars().all()
+        for m in members:
+            m.status = "coding"
+
+        # Reset done tasks to in_progress so merge trigger checks pass
+        task_result = await db.execute(
+            select(Task).where(Task.room_id == room.id, Task.status == "done")
+        )
+        tasks_to_reset = task_result.scalars().all()
+        for t in tasks_to_reset:
+            t.status = "in_progress"
+
+        room.status = "coding"
+        await db.commit()
+        room_id = room.id
+
+    logger.info("coding reopened for room %s by lead", room_code)
+
+    # Broadcast coding_reopened so all clients navigate back to /rooms/{code}/code
+    await sio.emit("coding_reopened", {"room_code": room_code}, room=room_code)

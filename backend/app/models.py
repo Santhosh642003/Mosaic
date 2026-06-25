@@ -137,6 +137,8 @@ class Merge(Base):
     merged_files: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     diff_report: Mapped[list] = mapped_column(JSONB, server_default="[]")
     conflicts: Mapped[list] = mapped_column(JSONB, server_default="[]")
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    run_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
