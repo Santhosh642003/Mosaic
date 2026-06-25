@@ -19,12 +19,37 @@ from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 
 from app.config import settings
 from app.services.sandbox import SandboxProvider
 
 logger = logging.getLogger(__name__)
+
+# ── Token budget helpers ──────────────────────────────────────────────────────
+
+_TOOL_OUTPUT_LIMIT = 400  # chars per stdout/stderr field before truncation
+
+
+def _truncate(text: str, limit: int = _TOOL_OUTPUT_LIMIT) -> str:
+    """Return text truncated to limit chars with a head+tail window."""
+    if len(text) <= limit:
+        return text
+    half = limit // 2
+    omitted = len(text) - limit
+    return f"{text[:half]}\n… [{omitted} chars omitted] …\n{text[-half:]}"
+
+
+def _truncate_tool_result(result: dict) -> dict:
+    """Cap stdout/stderr in a run_command result to stay within token budget."""
+    if "stdout" not in result and "stderr" not in result:
+        return result
+    out = dict(result)
+    if "stdout" in out:
+        out["stdout"] = _truncate(out["stdout"])
+    if "stderr" in out:
+        out["stderr"] = _truncate(out["stderr"])
+    return out
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -302,7 +327,10 @@ async def run_agent(
     """
     _model = model or settings.coding_model
     _max_steps = max_steps or settings.agent_max_steps
-    client = AsyncGroq(api_key=settings.groq_api_key)
+    client = AsyncOpenAI(
+        base_url=settings.llm_base_url,
+        api_key=settings.resolved_api_key,
+    )
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -416,12 +444,12 @@ async def run_agent(
                 )
             )
 
-            # Append tool result for the next LLM turn
+            # Append tool result — truncate stdout/stderr to stay within token budget
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": json.dumps(result),
+                    "content": json.dumps(_truncate_tool_result(result)),
                 }
             )
 

@@ -40,11 +40,19 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     github_redirect_uri: str = "http://localhost:8000/api/auth/github/callback"
 
-    # ── Groq LLM ─────────────────────────────────────────────────────────
+    # ── LLM (OpenAI-compatible — works with Groq, Cerebras, DeepSeek, OpenRouter)
+    llm_base_url: str = "https://api.groq.com/openai/v1"
+    llm_api_key: str = ""
+    # Legacy alias: GROQ_API_KEY is accepted when LLM_API_KEY is not set.
     groq_api_key: str = ""
     decomp_model: str = "llama-3.3-70b-versatile"
     coding_model: str = "llama-3.3-70b-versatile"
     merge_model: str = "llama-3.3-70b-versatile"
+
+    @property
+    def resolved_api_key(self) -> str:
+        """Return LLM_API_KEY, falling back to the legacy GROQ_API_KEY."""
+        return self.llm_api_key or self.groq_api_key
 
     # ── Sandbox ───────────────────────────────────────────────────────────
     sandbox_provider: str = "docker"   # "e2b" | "docker"
