@@ -1,11 +1,23 @@
 """Application configuration loaded from environment variables."""
 
 from functools import lru_cache
+from pathlib import Path
+
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve the root .env exactly once, regardless of working directory.
+# Layout: <repo-root>/.env   →   backend/app/config.py is 2 levels deep.
+_ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
+
+# load_dotenv populates os.environ so every downstream import sees the values.
+# override=False means real env vars (e.g. Docker/CI) still win.
+load_dotenv(_ROOT_ENV, override=False)
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # pydantic-settings also reads the same file for its own parsing pass.
+    model_config = SettingsConfigDict(env_file=str(_ROOT_ENV), extra="ignore")
 
     # ── App ──────────────────────────────────────────────────────────────
     app_name: str = "Mosaic"
@@ -34,7 +46,7 @@ class Settings(BaseSettings):
     coding_model: str = "llama-3.3-70b-versatile"
     merge_model: str = "llama-3.3-70b-versatile"
 
-    # ── Sandbox ───────────────────────────────────────────────────────────────
+    # ── Sandbox ───────────────────────────────────────────────────────────
     sandbox_provider: str = "docker"   # "e2b" | "docker"
     e2b_api_key: str = ""
     sandbox_timeout_seconds: int = 300

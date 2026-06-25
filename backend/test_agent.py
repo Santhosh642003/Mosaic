@@ -168,12 +168,14 @@ async def main() -> int:
 
     from app.services.sandbox import get_provider
     from app.services.agent import run_agent, AgentEvent
+    from app.config import settings
 
-    provider_name = os.environ.get("SANDBOX_PROVIDER", "docker")
+    provider_name = settings.sandbox_provider
     print(f"\n{BOLD}{hr('═')}{RESET}")
     print(f"{BOLD}  Mosaic Agent — Step 2 smoke test{RESET}")
     print(f"  Sandbox provider : {provider_name}")
-    print(f"  Model            : {os.environ.get('CODING_MODEL', 'llama-3.3-70b-versatile')}")
+    print(f"  Model            : {settings.coding_model}")
+    print(f"  .env             : {settings.model_config.get('env_file', '(not set)')}")
     print(f"{BOLD}{hr('═')}{RESET}")
     print(f"\n{BOLD}Instruction:{RESET}")
     print(_indent(INSTRUCTION.strip(), "  "))
