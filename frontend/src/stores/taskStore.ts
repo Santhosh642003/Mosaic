@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Task, TaskStatus, ChatMessage } from '@/types';
 import { tasks as tasksApi } from '@/lib/api';
+import { useRoomStore } from '@/stores/roomStore';
 
 interface TaskState {
   tasks: Task[];
@@ -109,8 +110,15 @@ export const useTaskStore = create<TaskState>()((set, _get) => ({
   assignTask: async (roomCode, taskId) => {
     try {
       const { data } = await tasksApi.assign(roomCode, taskId);
+      // Enrich with assignee display name from members store
+      const members = useRoomStore.getState().members;
+      const assignee = members.find((m) => m.id === data.assignedTo);
+      const enriched: Task = {
+        ...data,
+        assigneeName: assignee?.displayName ?? data.assigneeName,
+      };
       set((s) => ({
-        tasks: s.tasks.map((t) => (t.id === taskId ? data : t)),
+        tasks: s.tasks.map((t) => (t.id === taskId ? enriched : t)),
         myTaskId: taskId,
       }));
     } catch (err) {

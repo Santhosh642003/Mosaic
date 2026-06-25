@@ -125,7 +125,7 @@ function TaskCard({ task, index, onAssign, myAssignment, myName, allTasks }: {
         <div className="flex items-center justify-between pt-3 border-t border-ms-subtle">
           {isAssigned ? (
             <div className="flex items-center gap-2">
-              <Avatar name={task.assigneeName!} size="xs" />
+              <Avatar name={task.assigneeName ?? '?'} size="xs" />
               <span className="text-xs text-ms-fg2">{task.assigneeName}</span>
               {isMyTask && (
                 <span className="text-[10px] font-bold text-ms-blue border border-ms-blue/30 bg-ms-blue/10 rounded px-1.5 py-0.5">
