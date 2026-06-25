@@ -194,7 +194,7 @@ export default function Decomposition() {
     if (code) socket.emit('join_room', { code, token });
 
     // Real-time task assignment updates from other members
-    socket.on('task_assigned', (payload: { task_id: string; assigned_to: string; assignee_name: string; status: string }) => {
+    socket.on('task_assigned', (payload) => {
       useTaskStore.getState().setTasks(
         useTaskStore.getState().tasks.map((t) =>
           t.id === payload.task_id

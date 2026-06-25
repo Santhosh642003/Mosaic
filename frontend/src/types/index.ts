@@ -137,13 +137,16 @@ export interface CodeBlock {
 export interface ServerToClientEvents {
   room_state: (state: RoomState) => void;
   teammate_status_update: (payload: { memberId: string; status: MemberStatus }) => void;
-  task_assigned: (task: Task) => void;
+  task_assigned: (payload: { task_id: string; assigned_to: string; assignee_name: string; status: string }) => void;
   decomposition_stream: (payload: { chunk: string; taskIndex?: number }) => void;
   decomposition_complete: (tasks: Task[]) => void;
+  decomposition_started: () => void;
   ai_response_stream: (payload: { chunk: string; done: boolean }) => void;
   task_submitted: (payload: { taskId: string; memberId: string }) => void;
+  all_tasks_done: () => void;
   merge_log_stream: (payload: { tag: 'info' | 'ok' | 'warn'; text: string }) => void;
   merge_complete: (result: MergeResult) => void;
+  merge_error: (payload: { message?: string }) => void;
   error: (payload: { code: string; message: string }) => void;
 }
 
