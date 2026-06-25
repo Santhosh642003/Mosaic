@@ -70,9 +70,15 @@ export default function Lobby() {
       );
     });
 
+    // Host started decomposition — all members navigate together
+    socket.on('decomposition_started', () => {
+      navigate(`/rooms/${code}/decompose`);
+    });
+
     return () => {
       socket.off('room_state');
       socket.off('teammate_status_update');
+      socket.off('decomposition_started');
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);

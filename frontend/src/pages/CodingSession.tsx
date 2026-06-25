@@ -101,8 +101,15 @@ export default function CodingSession() {
         appendChatChunk(chunk);
       }
     });
-    return () => { socket.off('ai_response_stream'); };
-  }, [appendChatChunk, finalizeChatStream]);
+    // All teammates submitted — navigate everyone to merge
+    socket.on('all_tasks_done', () => {
+      navigate(`/rooms/${code}/merge`);
+    });
+    return () => {
+      socket.off('ai_response_stream');
+      socket.off('all_tasks_done');
+    };
+  }, [appendChatChunk, finalizeChatStream, navigate, code]);
 
   const formatTimer = (s: number) => {
     const h = Math.floor(s / 3600);
@@ -144,7 +151,9 @@ export default function CodingSession() {
     setIsMarking(true);
     const submitCode = Object.keys(editorCode).length > 0 ? editorCode : { [activeFile]: currentCode };
     emit('submit_task', { taskId: myTask?.id ?? '', code: submitCode });
-    setTimeout(() => navigate(`/rooms/${code}/merge`), 600);
+    // Navigation happens via the all_tasks_done socket event (when everyone is done).
+    // Fallback: if socket event doesn't arrive within 3s, navigate anyway.
+    setTimeout(() => navigate(`/rooms/${code}/merge`), 3000);
   };
 
   const teammates = members

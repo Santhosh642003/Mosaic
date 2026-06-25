@@ -192,6 +192,18 @@ async def handle_submit_task(sid: str, data: dict) -> None:
     )
     logger.info("task %s submitted by member %s in room %s", task_id, member_id, room_code)
 
+    # If all tasks in the room are done, push everyone to the merge page
+    async with AsyncSessionLocal() as db:
+        room_result = await db.execute(select(Room).where(Room.code == room_code))
+        room = room_result.scalar_one_or_none()
+        if room:
+            tasks_result = await db.execute(select(Task).where(Task.room_id == room.id))
+            all_tasks = tasks_result.scalars().all()
+            if all_tasks and all(t.status == "done" for t in all_tasks):
+                room.status = "merging"
+                await db.commit()
+                await sio.emit("all_tasks_done", {}, room=room_code)
+
 
 # ── trigger_decomposition ──────────────────────────────────────────────────────
 
@@ -235,6 +247,9 @@ async def handle_trigger_decomposition(sid: str, data: dict) -> None:
         ]
 
     logger.info("decomposition triggered for room %s", room_code)
+
+    # Notify all room members to navigate to the decomposition page
+    await sio.emit("decomposition_started", {}, room=room_code)
 
     from app.services.decomposer import run_decomposition
     import asyncio
