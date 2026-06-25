@@ -1,36 +1,44 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Github, ExternalLink, Eye, EyeOff, Plus, Settings } from 'lucide-react';
+import { Github, Settings, GitMerge, Users, Zap, ArrowRight } from 'lucide-react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Avatar } from '@/components/shared/Avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/stores/authStore';
+import { rooms as roomsApi, users as usersApi } from '@/lib/api';
+import { timeAgo } from '@/lib/utils';
+import type { Room, SavedCodebase } from '@/types';
 
-const LANGUAGES = [
-  { name: 'Python',     pct: 72 },
-  { name: 'TypeScript', pct: 54 },
-  { name: 'Go',         pct: 28 },
-  { name: 'Rust',       pct: 14 },
-];
-
-const ACTIVITY = [
-  { name: 'PingChat',          icon: '💬', desc: 'Auth + WebSocket + React SPA',  status: 'coding'  as const, code: '4K7P2X' },
-  { name: 'Leaderboard Engine',icon: '🏆', desc: 'Go + Redis + TypeScript',        status: 'done'    as const, code: 'R8QN5W' },
-  { name: 'Recipe AI',         icon: '🍳', desc: 'Python + FastAPI + React',       status: 'done'    as const, code: 'M2LX9T' },
-];
+const STATUS_BADGE: Record<string, { label: string; variant: 'green' | 'purple' | 'amber' | 'blue' }> = {
+  waiting:     { label: 'Waiting',  variant: 'amber' },
+  decomposing: { label: 'Active',   variant: 'blue' },
+  coding:      { label: 'Active',   variant: 'green' },
+  merging:     { label: 'Merging',  variant: 'purple' },
+  complete:    { label: 'Done',     variant: 'purple' },
+};
 
 export default function Profile() {
   const user = useUser();
-  const [keyVisible, setKeyVisible] = useState(false);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [codebases, setCodebases] = useState<SavedCodebase[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const displayName = user?.displayName ?? 'Devin Park';
-  const email = user?.email ?? 'devin@mosaic.dev';
+  useEffect(() => {
+    Promise.all([
+      roomsApi.list().then((r) => setRooms(r.data)).catch(() => {}),
+      usersApi.codebases().then((r) => setCodebases(r.data)).catch(() => {}),
+    ]).finally(() => setIsLoading(false));
+  }, []);
+
+  const completedRooms = rooms.filter((r) => r.status === 'complete').length;
+  const displayName = user?.displayName ?? '';
+  const email = user?.email ?? '';
 
   return (
     <div className="min-h-screen bg-ms-base">
       <Navbar />
-      <div className="max-w-5xl mx-auto px-6 py-10 grid md:grid-cols-[1fr_280px] gap-8">
+      <div className="max-w-4xl mx-auto px-6 py-10 grid md:grid-cols-[1fr_260px] gap-8">
         {/* Left */}
         <div className="space-y-6">
           {/* User card */}
@@ -41,23 +49,27 @@ export default function Profile() {
                 <h1 className="text-xl font-extrabold tracking-tight">{displayName}</h1>
                 <p className="text-sm text-ms-fg3">{email}</p>
                 {user?.githubId && (
-                  <a href={`https://github.com/${user.githubId}`} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-1 text-xs text-ms-blue hover:underline mt-1">
+                  <a
+                    href={`https://github.com/${user.githubId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-xs text-ms-blue hover:underline mt-1"
+                  >
                     <Github size={12} /> @{user.githubId}
                   </a>
                 )}
               </div>
-              <Button variant="ghost" size="sm">Edit profile</Button>
             </div>
 
-            {/* Stats */}
+            {/* Stats — real data */}
             <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'Rooms', value: '9',  color: 'text-ms-fg' },
-                { label: 'Tasks done', value: '31', color: 'text-ms-green' },
-                { label: 'Merges', value: '6',  color: 'text-ms-purple' },
-              ].map(({ label, value, color }) => (
+                { label: 'Rooms',       value: isLoading ? '…' : String(rooms.length),         icon: Users,    color: 'text-ms-blue'   },
+                { label: 'Merges done', value: isLoading ? '…' : String(completedRooms),        icon: GitMerge, color: 'text-ms-purple' },
+                { label: 'Codebases',   value: isLoading ? '…' : String(codebases.length),      icon: Zap,      color: 'text-ms-green'  },
+              ].map(({ label, value, icon: Icon, color }) => (
                 <div key={label} className="rounded-lg border border-ms-border bg-ms-raised p-4 text-center">
+                  <Icon size={14} className={`${color} mx-auto mb-1`} />
                   <div className={`text-2xl font-extrabold ${color}`}>{value}</div>
                   <div className="text-xs text-ms-fg3 mt-1">{label}</div>
                 </div>
@@ -65,91 +77,47 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Language usage */}
-          <div className="rounded-xl border border-ms-border bg-ms-surface p-5">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-ms-fg3 mb-4">Languages used</h2>
-            <div className="space-y-3">
-              {LANGUAGES.map((l) => (
-                <div key={l.name}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="font-medium">{l.name}</span>
-                    <span className="text-ms-fg3">{l.pct}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-ms-raised overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-ms-blue transition-all"
-                      style={{ width: `${l.pct}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Activity */}
+          {/* Recent rooms — real data */}
           <div className="rounded-xl border border-ms-border bg-ms-surface p-5">
             <h2 className="text-sm font-bold uppercase tracking-wider text-ms-fg3 mb-4">Recent rooms</h2>
-            <div className="space-y-3">
-              {ACTIVITY.map((a) => (
-                <Link
-                  key={a.code}
-                  to={`/rooms/${a.code}/${a.status === 'done' ? 'merge' : 'lobby'}`}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-ms-border hover:border-ms-raised hover:bg-ms-raised transition-all group"
-                >
-                  <span className="text-xl">{a.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm">{a.name}</div>
-                    <div className="text-xs text-ms-fg3 truncate">{a.desc}</div>
-                  </div>
-                  <Badge variant={a.status === 'coding' ? 'green' : 'purple'}>
-                    {a.status === 'coding' ? 'Active' : 'Done'}
-                  </Badge>
-                  <ExternalLink size={12} className="text-ms-fg3 group-hover:text-ms-fg transition-colors" />
-                </Link>
-              ))}
-            </div>
+            {isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-14 rounded-lg border border-ms-border bg-ms-raised animate-ms-pulse" />
+                ))}
+              </div>
+            ) : rooms.length === 0 ? (
+              <p className="text-sm text-ms-fg3 text-center py-6">No rooms yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {rooms.slice(0, 6).map((room) => {
+                  const badge = STATUS_BADGE[room.status] ?? STATUS_BADGE.waiting;
+                  const href = room.status === 'complete'
+                    ? `/rooms/${room.code}/merge`
+                    : `/rooms/${room.code}/lobby`;
+                  return (
+                    <Link
+                      key={room.id}
+                      to={href}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-ms-border hover:bg-ms-raised transition-all group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm">{room.name}</div>
+                        <div className="text-xs text-ms-fg3 truncate">{room.brief}</div>
+                      </div>
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                      <span className="text-[10px] text-ms-fg3">{timeAgo(room.createdAt)}</span>
+                      <ArrowRight size={12} className="text-ms-fg3 group-hover:text-ms-fg transition-colors" />
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right sidebar */}
         <div className="space-y-4">
-          {/* API keys */}
-          <div className="rounded-xl border border-ms-border bg-ms-surface p-5 sticky top-20">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-ms-fg3">API keys</h2>
-              <Badge variant="amber">Power user</Badge>
-            </div>
-
-            <div className="space-y-3">
-              {/* Groq key */}
-              <div>
-                <div className="text-xs font-semibold text-ms-fg2 mb-1.5">Groq</div>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 font-mono text-xs bg-ms-raised border border-ms-border rounded px-2.5 py-2 text-ms-fg3 overflow-hidden">
-                    {keyVisible ? 'gsk_real_key_would_go_here_12345' : 'gsk_••••••••••••••••••••'}
-                  </div>
-                  <button
-                    onClick={() => setKeyVisible((v) => !v)}
-                    className="text-ms-fg3 hover:text-ms-fg transition-colors"
-                  >
-                    {keyVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Add another */}
-              <button className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-dashed border-ms-border text-xs text-ms-fg3 hover:text-ms-fg hover:border-ms-border transition-colors">
-                <Plus size={12} /> Add API key
-              </button>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-ms-subtle">
-              <p className="text-xs text-ms-fg3 leading-relaxed">
-                Bring your own API keys for higher rate limits and model access.
-              </p>
-            </div>
-          </div>
-
           <Link
             to="/settings"
             className="flex items-center justify-between w-full rounded-xl border border-ms-border bg-ms-surface p-4 hover:bg-ms-raised transition-colors"
@@ -158,8 +126,54 @@ export default function Profile() {
               <Settings size={14} className="text-ms-fg3" />
               Account settings
             </div>
-            <ExternalLink size={12} className="text-ms-fg3" />
+            <ArrowRight size={12} className="text-ms-fg3" />
           </Link>
+
+          {user?.hasGithubToken ? (
+            <div className="rounded-xl border border-ms-green/30 bg-ms-green/5 p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ms-green mb-1">
+                <Github size={14} /> GitHub connected
+              </div>
+              <p className="text-xs text-ms-fg3">
+                You can push merged codebases directly to your repositories.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-ms-border bg-ms-surface p-4">
+              <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+                <Github size={14} className="text-ms-fg3" /> Connect GitHub
+              </div>
+              <p className="text-xs text-ms-fg3 mb-3">
+                Push merged codebases directly to your repositories.
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full"
+                onClick={async () => {
+                  const { auth } = await import('@/lib/api');
+                  const r = await auth.githubUrl();
+                  if (r.data.url) window.location.href = r.data.url;
+                }}
+              >
+                <Github size={13} /> Connect GitHub
+              </Button>
+            </div>
+          )}
+
+          {codebases.length > 0 && (
+            <div className="rounded-xl border border-ms-border bg-ms-surface p-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-ms-fg3 mb-3">Saved codebases</h3>
+              <div className="space-y-2">
+                {codebases.slice(0, 4).map((cb) => (
+                  <div key={cb.id} className="flex items-center justify-between text-xs">
+                    <span className="text-ms-fg2 truncate flex-1">{cb.roomName}</span>
+                    <span className="text-ms-fg3 ml-2">{timeAgo(cb.createdAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

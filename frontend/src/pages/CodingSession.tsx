@@ -84,7 +84,7 @@ export default function CodingSession() {
 
   useEffect(() => {
     const t = setInterval(() => setTimer((s) => s + 1), 1000);
-    return () => clearInterval(t);
+    return () => { clearInterval(t); };
   }, []);
 
   useEffect(() => {

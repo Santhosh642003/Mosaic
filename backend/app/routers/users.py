@@ -74,4 +74,5 @@ async def delete_account(
 ) -> dict:
     """Permanently delete the authenticated user's account."""
     await db.delete(user)
+    await db.commit()
     return {"detail": "Account deleted"}

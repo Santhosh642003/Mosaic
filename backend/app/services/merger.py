@@ -74,6 +74,11 @@ async def run_merge(room_id: str, room_code: str) -> None:
                 {"message": f"Merge failed: {exc}", "tag": "ERROR", "done": True},
                 room=room_code,
             )
+            await sio.emit(
+                "merge_error",
+                {"message": f"AI merge failed: {exc}. Please try again."},
+                room=room_code,
+            )
             async with AsyncSessionLocal() as db:
                 room_result = await db.execute(select(Room).where(Room.id == room_id))
                 room = room_result.scalar_one_or_none()

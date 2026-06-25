@@ -153,7 +153,7 @@ export default function Dashboard() {
                   <div className="text-xs text-ms-fg3 mb-3">{cb.language?.join(' · ') ?? '—'}</div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-ms-fg3">
-                      {Object.keys(cb.mergedFiles ?? {}).length} files · {timeAgo(cb.createdAt)}
+                      {cb.mergedFiles ? Object.keys(cb.mergedFiles).length : 0} files · {timeAgo(cb.createdAt)}
                     </span>
                     <a
                       href={mergeApi.downloadUrl(cb.roomCode)}

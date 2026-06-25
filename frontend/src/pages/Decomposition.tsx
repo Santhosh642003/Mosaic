@@ -193,6 +193,17 @@ export default function Decomposition() {
     const token = localStorage.getItem('access_token');
     if (code) socket.emit('join_room', { code, token });
 
+    // Real-time task assignment updates from other members
+    socket.on('task_assigned', (payload: { task_id: string; assigned_to: string; assignee_name: string; status: string }) => {
+      useTaskStore.getState().setTasks(
+        useTaskStore.getState().tasks.map((t) =>
+          t.id === payload.task_id
+            ? { ...t, assignedTo: payload.assigned_to, assigneeName: payload.assignee_name, status: 'in_progress' as const }
+            : t
+        )
+      );
+    });
+
     socket.on('decomposition_stream', ({ chunk }: { chunk: string }) => {
       if (chunk) setStreamIdx((i) => Math.min(i + 1, STREAM_MSGS.length - 1));
     });
@@ -276,6 +287,7 @@ export default function Decomposition() {
       clearInterval(streamRef.current!);
       clearInterval(revealRef.current!);
       clearInterval(pollRef);
+      socket.off('task_assigned');
       socket.off('decomposition_stream');
       socket.off('decomposition_complete');
     };

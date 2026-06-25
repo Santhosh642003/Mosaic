@@ -10,6 +10,7 @@ from app.auth_utils import get_current_user, get_optional_user
 from app.database import get_db
 from app.models import Room, RoomMember, Task, User
 from app.schemas import SubmitTaskRequest, TaskResponse
+from app.socket_manager import sio
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -64,7 +65,20 @@ async def assign_task(
     task.status = "in_progress"
     member.task_id = task.id
     member.status = "coding"
-    await db.flush()
+    await db.commit()
+    await db.refresh(task)
+
+    # Broadcast assignment to all room members in real-time
+    await sio.emit(
+        "task_assigned",
+        {
+            "task_id": task.id,
+            "assigned_to": member.id,
+            "assignee_name": member.display_name,
+            "status": "in_progress",
+        },
+        room=code.upper(),
+    )
 
     return task
 
@@ -87,9 +101,7 @@ async def submit_task(
 
     task.code = body.code
     task.status = "done"
-    await db.flush()
 
-    # Update member status
     if task.assigned_to:
         member_result = await db.execute(
             select(RoomMember).where(RoomMember.id == task.assigned_to)
@@ -97,8 +109,9 @@ async def submit_task(
         member = member_result.scalar_one_or_none()
         if member:
             member.status = "done"
-            await db.flush()
 
+    await db.commit()
+    await db.refresh(task)
     return task
 
 

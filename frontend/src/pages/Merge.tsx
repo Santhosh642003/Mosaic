@@ -48,7 +48,7 @@ export default function MergePage() {
   const { tasks } = useTaskStore();
   const branchCount = members.length || tasks.length;
   const user = useUser();
-  const { phase, stage, logs, result, setPhase, setStage, appendLog, setResult, setError } = useMergeStore();
+  const { phase, stage, logs, result, error, setPhase, setStage, appendLog, setResult, setError } = useMergeStore();
 
   const [logCount, setLogCount] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -87,8 +87,6 @@ export default function MergePage() {
     });
 
     socket.on('merge_complete', (_summary: unknown) => {
-      // Backend sends a summary { merge_id, file_count, conflict_count, download_url }
-      // Fetch the full result from REST API
       clearInterval(stageRef.current!);
       clearInterval(logRef.current!);
       mergeApi.result(code!).then((r) => {
@@ -96,9 +94,17 @@ export default function MergePage() {
         setPhase('complete');
       }).catch(() => setPhase('complete'));
     });
+
+    socket.on('merge_error', (payload: { message?: string }) => {
+      clearInterval(stageRef.current!);
+      clearInterval(logRef.current!);
+      setError(payload.message ?? 'Merge failed. Please try again.');
+      setPhase('idle');
+    });
     return () => {
       socket.off('merge_log_stream');
       socket.off('merge_complete');
+      socket.off('merge_error');
     };
   }, [appendLog, setResult]);
 
@@ -229,6 +235,14 @@ export default function MergePage() {
               );
             })}
           </div>
+
+          {/* Error state */}
+          {phase === 'idle' && error && (
+            <div className="rounded-xl border border-ms-red/40 bg-ms-red/5 p-4 mb-4 flex items-center gap-3">
+              <AlertTriangle size={16} className="text-ms-red flex-none" />
+              <span className="text-sm text-ms-red">{error}</span>
+            </div>
+          )}
 
           {/* Idle: ready to merge */}
           {phase === 'idle' && (
