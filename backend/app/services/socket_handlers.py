@@ -554,15 +554,18 @@ async def handle_agent_action(sid: str, data: dict) -> None:
             to=sid,
         )
 
-# ── agent_run (standalone playground — Step 3) ────────────────────────────────
+# ── agent_run / terminal_exec (standalone playground) ─────────────────────────
 #
-# Client emits:  { instruction: str }
-# Server emits:  agent_event { type, step, ... } back to the same SID only.
-#
-# Each AgentEvent is forwarded as-is, plus a `files` snapshot whenever
-# a file is written/edited/deleted so the frontend can update the editor pane.
+# agent_run:     client emits { instruction }; server streams agent_event payloads
+#                back to the same SID only.
+# terminal_exec: client emits { cmd }; server runs it in the active sandbox and
+#                emits terminal_result { cmd, stdout, stderr, exit_code, source }
+#                back.  No sandbox_id needed from the client — we track it here.
 
 import asyncio as _asyncio
+
+# sid → full sandbox_id for the currently active agent playground session.
+_playground_sandboxes: dict[str, str] = {}
 
 
 @sio.on("agent_run")
@@ -641,6 +644,7 @@ async def _agent_run_task(sid: str, instruction: str) -> None:
 
     try:
         sandbox_id = await provider.create(room_id="playground", task_id="agent")
+        _playground_sandboxes[sid] = sandbox_id
         await sio.emit(
             "agent_event",
             {"type": "sandbox_ready", "step": 0, "sandbox_id": sandbox_id[:12]},
@@ -655,9 +659,51 @@ async def _agent_run_task(sid: str, instruction: str) -> None:
             to=sid,
         )
     finally:
+        _playground_sandboxes.pop(sid, None)
         if sandbox_id:
             try:
                 await provider.destroy(sandbox_id)
             except Exception:
                 pass
         await sio.emit("agent_event", {"type": "sandbox_destroyed", "step": 0}, to=sid)
+
+
+@sio.on("terminal_exec")
+async def handle_terminal_exec(sid: str, data: dict) -> None:
+    """Run a user-typed command in the active playground sandbox."""
+    cmd = (data.get("cmd") or "").strip()
+    if not cmd:
+        return
+
+    sandbox_id = _playground_sandboxes.get(sid)
+    if not sandbox_id:
+        await sio.emit(
+            "terminal_result",
+            {"cmd": cmd, "stdout": "", "stderr": "No active sandbox.", "exit_code": -1, "source": "user"},
+            to=sid,
+        )
+        return
+
+    from app.services.sandbox import get_provider
+    provider = get_provider()
+
+    try:
+        result = await provider.run_command(sandbox_id, cmd)
+        await sio.emit(
+            "terminal_result",
+            {
+                "cmd": cmd,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "exit_code": result.exit_code,
+                "source": "user",
+            },
+            to=sid,
+        )
+    except Exception as exc:
+        logger.exception("terminal_exec error: %s", exc)
+        await sio.emit(
+            "terminal_result",
+            {"cmd": cmd, "stdout": "", "stderr": str(exc), "exit_code": -1, "source": "user"},
+            to=sid,
+        )

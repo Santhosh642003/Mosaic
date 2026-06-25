@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
-import type { AgentEventPayload } from '@/types';
+import type { AgentEventPayload, TerminalResultPayload } from '@/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,8 @@ interface TermEntry {
   cmd: string;
   stdout: string;
   stderr: string;
-  exitCode: number | null; // null = still running
+  exitCode: number | null; // null = pending
+  source: 'agent' | 'user';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -55,28 +56,33 @@ function fileResultSummary(name: string, result: Record<string, unknown>): { tex
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AgentPlayground() {
-  const [instruction, setInstruction] = useState('');
-  const [running, setRunning] = useState(false);
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const [termLog, setTermLog] = useState<TermEntry[]>([]);
-  const [files, setFiles] = useState<Record<string, string>>({});
-  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [instruction, setInstruction]   = useState('');
+  const [running, setRunning]           = useState(false);
+  const [sandboxActive, setSandboxActive] = useState(false);
+  const [log, setLog]                   = useState<LogEntry[]>([]);
+  const [termLog, setTermLog]           = useState<TermEntry[]>([]);
+  const [files, setFiles]               = useState<Record<string, string>>({});
+  const [activeFile, setActiveFile]     = useState<string | null>(null);
+  const [cmdInput, setCmdInput]         = useState('');
+  const [cmdHistory, setCmdHistory]     = useState<string[]>([]);
+  const [histIdx, setHistIdx]           = useState(-1);   // -1 = not browsing
 
-  const logEndRef  = useRef<HTMLDivElement>(null);
-  const termEndRef = useRef<HTMLDivElement>(null);
-  const logIdRef   = useRef(0);
-  const termIdRef  = useRef(0);
+  const logEndRef    = useRef<HTMLDivElement>(null);
+  const termEndRef   = useRef<HTMLDivElement>(null);
+  const cmdInputRef  = useRef<HTMLInputElement>(null);
+  const logIdRef     = useRef(0);
+  const termIdRef    = useRef(0);
 
-  // Pending run_command: cmd string waiting for its result
-  const pendingCmdRef = useRef<{ id: number; cmd: string } | null>(null);
+  // Pending agent run_command: waiting for its tool_result
+  const pendingAgentCmdRef = useRef<{ id: number; cmd: string } | null>(null);
 
   const addLog = useCallback((entry: Omit<LogEntry, 'id'>) => {
     setLog(prev => [...prev, { id: logIdRef.current++, ...entry }]);
   }, []);
 
   // Auto-scroll both panels
-  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [log]);
-  useEffect(() => { termEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [termLog]);
+  useLayoutEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [log]);
+  useLayoutEffect(() => { termEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [termLog]);
 
   // Pick first file when files change and nothing selected
   useEffect(() => {
@@ -89,13 +95,14 @@ export default function AgentPlayground() {
   useEffect(() => {
     const socket = connectSocket();
 
-    const onEvent = (payload: AgentEventPayload) => {
+    const onAgentEvent = (payload: AgentEventPayload) => {
       const step = payload.step ?? 0;
 
       if (payload.files) setFiles(payload.files);
 
       switch (payload.type) {
         case 'sandbox_ready':
+          setSandboxActive(true);
           addLog({ type: 'info', step, text: `Sandbox ready (${payload.sandbox_id ?? ''})` });
           break;
 
@@ -111,8 +118,8 @@ export default function AgentPlayground() {
           if (payload.tool_name === 'run_command') {
             const cmd = String(payload.tool_args?.cmd ?? '');
             const id = termIdRef.current++;
-            pendingCmdRef.current = { id, cmd };
-            setTermLog(prev => [...prev, { id, step, cmd, stdout: '', stderr: '', exitCode: null }]);
+            pendingAgentCmdRef.current = { id, cmd };
+            setTermLog(prev => [...prev, { id, step, cmd, stdout: '', stderr: '', exitCode: null, source: 'agent' }]);
           } else {
             addLog({ type: 'tool_call', step, text: toolLabel(payload.tool_name ?? '', payload.tool_args) });
           }
@@ -124,12 +131,12 @@ export default function AgentPlayground() {
             const ec = r.exit_code as number ?? -1;
             const stdout = (r.stdout as string | undefined)?.trimEnd() ?? '';
             const stderr = (r.stderr as string | undefined)?.trimEnd() ?? '';
-            const pending = pendingCmdRef.current;
+            const pending = pendingAgentCmdRef.current;
             if (pending !== null) {
               setTermLog(prev => prev.map(e =>
-                e.id === pending.id ? { ...e, stdout, stderr, exitCode: ec } : e
+                e.id === pending.id ? { ...e, stdout, stderr, exitCode: ec } : e,
               ));
-              pendingCmdRef.current = null;
+              pendingAgentCmdRef.current = null;
             }
           } else {
             const { text, ok } = fileResultSummary(payload.tool_name ?? '', payload.tool_result ?? {});
@@ -140,6 +147,7 @@ export default function AgentPlayground() {
         case 'complete':
           addLog({ type: 'complete', step, text: payload.summary ?? 'Done' });
           setRunning(false);
+          // Keep sandbox active — user can still run commands until a new session
           break;
 
         case 'error':
@@ -149,14 +157,31 @@ export default function AgentPlayground() {
 
         case 'sandbox_destroyed':
           addLog({ type: 'info', step, text: 'Sandbox destroyed' });
+          setSandboxActive(false);
           setRunning(false);
           break;
       }
     };
 
-    socket.on('agent_event', onEvent);
+    const onTerminalResult = (payload: TerminalResultPayload) => {
+      setTermLog(prev => {
+        // Find the most recent pending user entry and resolve it
+        const idx = [...prev].reverse().findIndex(e => e.source === 'user' && e.exitCode === null && e.cmd === payload.cmd);
+        if (idx === -1) return prev;
+        const realIdx = prev.length - 1 - idx;
+        return prev.map((e, i) =>
+          i === realIdx
+            ? { ...e, stdout: payload.stdout.trimEnd(), stderr: payload.stderr.trimEnd(), exitCode: payload.exit_code }
+            : e,
+        );
+      });
+    };
+
+    socket.on('agent_event', onAgentEvent);
+    socket.on('terminal_result', onTerminalResult);
     return () => {
-      socket.off('agent_event', onEvent);
+      socket.off('agent_event', onAgentEvent);
+      socket.off('terminal_result', onTerminalResult);
       disconnectSocket();
     };
   }, [addLog]);
@@ -167,9 +192,49 @@ export default function AgentPlayground() {
     setTermLog([]);
     setFiles({});
     setActiveFile(null);
-    pendingCmdRef.current = null;
+    setSandboxActive(false);
+    pendingAgentCmdRef.current = null;
     setRunning(true);
     getSocket().emit('agent_run', { instruction: instruction.trim() });
+  };
+
+  const submitCmd = () => {
+    const cmd = cmdInput.trim();
+    if (!cmd || !sandboxActive) return;
+
+    // Add to history (deduplicate consecutive same command)
+    setCmdHistory(prev => (prev[0] === cmd ? prev : [cmd, ...prev].slice(0, 100)));
+    setHistIdx(-1);
+    setCmdInput('');
+
+    // Optimistically add a pending entry
+    const id = termIdRef.current++;
+    setTermLog(prev => [...prev, { id, step: 0, cmd, stdout: '', stderr: '', exitCode: null, source: 'user' }]);
+
+    getSocket().emit('terminal_exec', { cmd });
+  };
+
+  const handleCmdKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitCmd();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = Math.min(histIdx + 1, cmdHistory.length - 1);
+      setHistIdx(next);
+      setCmdInput(cmdHistory[next] ?? '');
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (histIdx <= 0) { setHistIdx(-1); setCmdInput(''); return; }
+      const next = histIdx - 1;
+      setHistIdx(next);
+      setCmdInput(cmdHistory[next] ?? '');
+      return;
+    }
   };
 
   return (
@@ -212,12 +277,11 @@ export default function AgentPlayground() {
           <div ref={logEndRef} />
         </div>
 
-        {/* Right: file editor */}
+        {/* Right column: Monaco + Terminal */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-          {/* Top: Monaco */}
+          {/* Monaco */}
           <div className="flex flex-col flex-1 min-h-0 border-b border-white/10">
-            {/* File tabs */}
             <div className="flex overflow-x-auto border-b border-white/10 bg-[#111] shrink-0 min-h-[34px]">
               <PanelLabel className="border-r border-white/10 pr-3">Files</PanelLabel>
               {Object.keys(files).map(path => (
@@ -237,8 +301,6 @@ export default function AgentPlayground() {
                 <span className="px-3 py-1.5 text-xs text-gray-600 self-center">No files yet</span>
               )}
             </div>
-
-            {/* Editor */}
             <div className="flex-1 min-h-0">
               {activeFile && files[activeFile] !== undefined ? (
                 <Editor
@@ -266,21 +328,62 @@ export default function AgentPlayground() {
             </div>
           </div>
 
-          {/* Bottom: terminal */}
-          <div className="flex flex-col h-[220px] shrink-0 bg-[#0a0a0a]">
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/10 bg-[#111] shrink-0">
+          {/* Terminal */}
+          <div className="flex flex-col h-[240px] shrink-0 bg-[#0a0a0a]">
+            {/* Terminal header */}
+            <div className="flex items-center gap-3 px-3 py-1.5 border-b border-white/10 bg-[#111] shrink-0">
               <PanelLabel>Terminal</PanelLabel>
-              {running && termLog.some(e => e.exitCode === null) && (
-                <span className="text-xs text-yellow-500 ml-1 animate-pulse">running…</span>
+              <div className="flex items-center gap-2 ml-auto text-[10px]">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-indigo-500 opacity-70" />
+                  <span className="text-gray-600">agent</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 opacity-70" />
+                  <span className="text-gray-600">you</span>
+                </span>
+              </div>
+              {!sandboxActive && (
+                <span className="text-[10px] text-gray-600 ml-2">no sandbox</span>
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* Output area */}
+            <div
+              className="flex-1 overflow-y-auto p-3 space-y-3 cursor-text"
+              onClick={() => cmdInputRef.current?.focus()}
+            >
               {termLog.length === 0 && (
                 <span className="text-gray-600 text-xs">Command output will appear here</span>
               )}
               {termLog.map(entry => <TermBlock key={entry.id} entry={entry} />)}
               <div ref={termEndRef} />
+            </div>
+
+            {/* Command input */}
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-white/10 shrink-0">
+              <span className={`text-xs shrink-0 ${sandboxActive ? 'text-emerald-400' : 'text-gray-600'}`}>❯</span>
+              <input
+                ref={cmdInputRef}
+                type="text"
+                value={cmdInput}
+                onChange={e => { setCmdInput(e.target.value); setHistIdx(-1); }}
+                onKeyDown={handleCmdKeyDown}
+                disabled={!sandboxActive}
+                placeholder={sandboxActive ? 'Type a command… (↑↓ history)' : 'Waiting for sandbox…'}
+                className="flex-1 bg-transparent border-none outline-none text-xs text-gray-100 placeholder-gray-600 disabled:opacity-40 select-text"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {sandboxActive && cmdInput.trim() && (
+                <button
+                  onClick={submitCmd}
+                  className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors px-1"
+                  tabIndex={-1}
+                >
+                  Enter
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -335,14 +438,25 @@ function LogLine({ entry }: { entry: LogEntry }) {
 function TermBlock({ entry }: { entry: TermEntry }) {
   const isRunning = entry.exitCode === null;
   const exitOk    = entry.exitCode === 0;
+  const isUser    = entry.source === 'user';
 
   return (
     <div className="space-y-0.5 select-text">
       {/* Command line */}
       <div className="flex items-start gap-1.5">
-        <span className="text-indigo-400 shrink-0">$</span>
-        <span className="text-gray-200 text-xs whitespace-pre-wrap break-all">{entry.cmd}</span>
-        {isRunning && <span className="text-yellow-500 text-[10px] ml-1 animate-pulse shrink-0">…</span>}
+        <span className={`shrink-0 text-xs ${isUser ? 'text-emerald-400' : 'text-indigo-400'}`}>$</span>
+        <span className="text-gray-200 text-xs whitespace-pre-wrap break-all flex-1">{entry.cmd}</span>
+        <span
+          title={isUser ? 'you' : 'agent'}
+          className={`shrink-0 text-[9px] px-1 py-0 rounded-sm self-center font-medium ${
+            isUser
+              ? 'bg-emerald-900/50 text-emerald-500'
+              : 'bg-indigo-900/50 text-indigo-400'
+          }`}
+        >
+          {isUser ? 'you' : 'agent'}
+        </span>
+        {isRunning && <span className="text-yellow-500 text-[10px] animate-pulse shrink-0">…</span>}
       </div>
 
       {/* stdout */}

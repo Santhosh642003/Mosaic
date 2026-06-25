@@ -150,6 +150,7 @@ export interface ServerToClientEvents {
   merge_error: (payload: { message?: string }) => void;
   error: (payload: { code: string; message: string }) => void;
   agent_event: (payload: AgentEventPayload) => void;
+  terminal_result: (payload: TerminalResultPayload) => void;
 }
 
 export interface ClientToServerEvents {
@@ -162,9 +163,18 @@ export interface ClientToServerEvents {
   agent_action: (payload: { taskId?: string; agentId: string; prompt: string; files: Record<string, string> }) => void;
   assign_task: (payload: { taskId: string }) => void;
   agent_run: (payload: { instruction: string }) => void;
+  terminal_exec: (payload: { cmd: string }) => void;
 }
 
 // ─── Agent playground ─────────────────────────────────────────────────────────
+
+export interface TerminalResultPayload {
+  cmd: string;
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  source: 'agent' | 'user';
+}
 
 export interface AgentEventPayload {
   type: 'step' | 'thinking' | 'tool_call' | 'tool_result' | 'complete' | 'error' | 'sandbox_ready' | 'sandbox_destroyed';
