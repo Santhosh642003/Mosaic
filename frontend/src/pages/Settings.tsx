@@ -9,7 +9,6 @@ import { users as usersApi } from '@/lib/api';
 
 type Theme = 'dark' | 'light' | 'system';
 type Lang  = 'Python' | 'TypeScript' | 'Go';
-type Model = 'Qwen2.5-Coder' | 'DeepSeek-R1';
 
 const THEMES: { key: Theme; label: string; swatch: string[] }[] = [
   { key: 'dark',   label: 'Dark',   swatch: ['#0D1117', '#161B22', '#4F8EF7'] },
@@ -54,7 +53,6 @@ export default function SettingsPage() {
   const { logout } = useAuthStore();
   const [theme, setTheme] = useState<Theme>('dark');
   const [lang, setLang]   = useState<Lang>('Python');
-  const [model, setModel] = useState<Model>('Qwen2.5-Coder');
   const [notif, setNotif] = useState({ blocked: true, merge: true, mention: false });
   const [showDanger, setShowDanger] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -129,28 +127,6 @@ export default function SettingsPage() {
                     )}
                   >
                     {l}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-ms-fg3 uppercase tracking-wider block mb-2">
-                AI model preference
-              </label>
-              <div className="flex gap-1 p-1 bg-ms-raised border border-ms-border rounded-lg">
-                {(['Qwen2.5-Coder', 'DeepSeek-R1'] as Model[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setModel(m)}
-                    className={cn(
-                      'flex-1 py-1.5 rounded text-sm font-semibold transition-all',
-                      model === m
-                        ? 'bg-ms-surface text-ms-fg shadow-sm'
-                        : 'text-ms-fg3 hover:text-ms-fg2'
-                    )}
-                  >
-                    {m}
                   </button>
                 ))}
               </div>

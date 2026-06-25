@@ -3,7 +3,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth_utils import get_current_user
@@ -72,7 +72,43 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Permanently delete the authenticated user's account."""
+    """
+    Permanently delete the authenticated user's account.
+
+    The schema has no ON DELETE cascades and a circular FK between tasks and
+    room_members, so we tear down dependent rows explicitly and in order:
+    rooms the user leads (with all their contents) first, then the user's
+    memberships elsewhere, then the user.
+    """
+    # 1. Rooms led by this user — remove everything inside them.
+    led_rooms = (
+        await db.execute(select(Room.id).where(Room.lead_id == user.id))
+    ).scalars().all()
+    if led_rooms:
+        # Break the task <-> member circular FK before deleting either side.
+        await db.execute(
+            update(Task).where(Task.room_id.in_(led_rooms)).values(assigned_to=None)
+        )
+        await db.execute(
+            update(RoomMember).where(RoomMember.room_id.in_(led_rooms)).values(task_id=None)
+        )
+        await db.execute(delete(Merge).where(Merge.room_id.in_(led_rooms)))
+        await db.execute(delete(Task).where(Task.room_id.in_(led_rooms)))
+        await db.execute(delete(RoomMember).where(RoomMember.room_id.in_(led_rooms)))
+        await db.execute(delete(Room).where(Room.id.in_(led_rooms)))
+
+    # 2. This user's memberships in rooms led by others.
+    my_member_ids = (
+        await db.execute(select(RoomMember.id).where(RoomMember.user_id == user.id))
+    ).scalars().all()
+    if my_member_ids:
+        # Unassign any tasks pointing at these member rows first (FK).
+        await db.execute(
+            update(Task).where(Task.assigned_to.in_(my_member_ids)).values(assigned_to=None)
+        )
+        await db.execute(delete(RoomMember).where(RoomMember.id.in_(my_member_ids)))
+
+    # 3. Finally, the user.
     await db.delete(user)
     await db.commit()
     return {"detail": "Account deleted"}

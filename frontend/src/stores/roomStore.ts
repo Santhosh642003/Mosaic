@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Room, RoomMember, MemberStatus } from '@/types';
 import { rooms as roomsApi } from '@/lib/api';
+import { useAuthStore } from '@/stores/authStore';
 import { initials as toInitials, avatarColor } from '@/lib/utils';
 
 interface RoomState {
@@ -60,9 +61,17 @@ export const useRoomStore = create<RoomState>()((set, get) => ({
         initials: m.initials ?? toInitials(m.displayName),
         avatarColor: m.avatarColor ?? avatarColor(m.displayName),
       }));
-      // Recover "me" — guests have no JWT, so restore the member id persisted
-      // at join time (survives page reloads) if it still matches a member.
+      // Recover "me" so identity survives reloads / direct navigation.
+      // Authenticated users are matched by their user id; guests have no JWT,
+      // so we restore the member id persisted at join time.
       let myMemberId = get().myMemberId;
+      if (!myMemberId) {
+        const authUser = useAuthStore.getState().user;
+        if (authUser) {
+          const mine = members.find((m) => m.userId === authUser.id);
+          if (mine) myMemberId = mine.id;
+        }
+      }
       if (!myMemberId) {
         const stored = localStorage.getItem(MEMBER_KEY(code));
         if (stored && members.some((m) => m.id === stored)) myMemberId = stored;

@@ -32,7 +32,7 @@ async def handle_join_room(sid: str, data: dict) -> None:
     Validate token, join the socket.io room, emit room_state back.
     """
     code = (data.get("code") or "").upper()
-    member_id = data.get("member_id")
+    member_id = data.get("member_id") or data.get("memberId")
 
     # Token can come from the event payload or the connect-time auth
     token = data.get("token")
@@ -159,10 +159,10 @@ async def handle_update_status(sid: str, data: dict) -> None:
 @sio.on("submit_task")
 async def handle_submit_task(sid: str, data: dict) -> None:
     """
-    Client sends: { task_id, code: { filename: content } }
+    Client sends: { task_id | taskId, code: { filename: content } }
     Stores code, marks task done, broadcasts task_submitted.
     """
-    task_id = data.get("task_id")
+    task_id = data.get("task_id") or data.get("taskId")
     code_payload = data.get("code", {})
 
     room_code, member_id = await _get_member_and_room(sid)
@@ -456,12 +456,12 @@ async def handle_reject_contract_change(sid: str, data: dict) -> None:
 @sio.on("ai_prompt")
 async def handle_ai_prompt(sid: str, data: dict) -> None:
     """
-    Client sends: { prompt, context_code?, task_id? }
+    Client sends: { prompt, context_code | contextCode?, task_id | taskId? }
     Streams ai_response_stream chunks back to the requesting socket only.
     """
     prompt = data.get("prompt", "").strip()
-    context_code = data.get("context_code", "")
-    task_id = data.get("task_id")
+    context_code = data.get("context_code") or data.get("contextCode") or ""
+    task_id = data.get("task_id") or data.get("taskId")
 
     if not prompt:
         return

@@ -7,7 +7,7 @@ import { RoomCodeDisplay } from '@/components/shared/RoomCodeDisplay';
 import { RoomHeader } from '@/components/shared/RoomHeader';
 import { useRoomStore } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
-import { connectSocket, getSocket } from '@/lib/socket';
+import { connectSocket, getSocket, joinSocketRoom } from '@/lib/socket';
 import { cn, avatarColor, initials } from '@/lib/utils';
 import type { MemberRole, MemberStatus, RoomMember } from '@/types';
 
@@ -50,8 +50,7 @@ export default function Lobby() {
 
     connectSocket();
     const socket = getSocket();
-    const token = localStorage.getItem('access_token');
-    socket.emit('join_room', { code, token });
+    joinSocketRoom(code);
 
     socket.on('room_state', (rawState: unknown) => {
       // Backend socket emits: { room_id, code, status, members: { id: {...snake_case} } }

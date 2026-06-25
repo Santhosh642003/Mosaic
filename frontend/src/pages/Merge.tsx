@@ -7,7 +7,7 @@ import { useMergeStore } from '@/stores/mergeStore';
 import { useRoomStore } from '@/stores/roomStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useUser } from '@/stores/authStore';
-import { getSocket, connectSocket, emit } from '@/lib/socket';
+import { getSocket, connectSocket, emit, joinSocketRoom } from '@/lib/socket';
 import { merge as mergeApi, auth as authApi } from '@/lib/api';
 import { cn, copyToClipboard } from '@/lib/utils';
 
@@ -17,22 +17,6 @@ const STAGE_LABELS = [
   'Fixing integration issues',
   'Finalizing merged project',
 ];
-
-const LOG_SEQ = [
-  { tag: 'info', color: '#7D8590', text: 'Loading 4 task submissions…' },
-  { tag: 'info', color: '#7D8590', text: 'Parsing ASTs across 31 files…' },
-  { tag: 'ok',   color: '#3FB950', text: 'Auth service (T1) — contracts validated' },
-  { tag: 'ok',   color: '#3FB950', text: 'Message API (T2) — contracts validated' },
-  { tag: 'warn', color: '#D29922', text: 'WebSocket (T3) — signature mismatch on save_message' },
-  { tag: 'info', color: '#7D8590', text: 'Resolving: updating T3 call to match T2 schema…' },
-  { tag: 'ok',   color: '#3FB950', text: 'WebSocket (T3) — integration resolved' },
-  { tag: 'warn', color: '#D29922', text: 'Frontend (T4) — event shape drift on message_received' },
-  { tag: 'info', color: '#7D8590', text: 'Resolving: aligning payload to {id, content, user, ts}…' },
-  { tag: 'ok',   color: '#3FB950', text: 'Frontend (T4) — integration resolved' },
-  { tag: 'info', color: '#7D8590', text: 'Generating entry point (main.py) and docker-compose…' },
-  { tag: 'ok',   color: '#3FB950', text: 'Merge complete — 31 files unified, 2 conflicts resolved' },
-] as const;
-
 
 const OP_COLORS: Record<string, string> = {
   added: '#3FB950', modified: '#4F8EF7', removed: '#F85149',
@@ -48,9 +32,13 @@ export default function MergePage() {
   const { tasks } = useTaskStore();
   const branchCount = members.length || tasks.length;
   const user = useUser();
-  const { phase, stage, logs, result, error, setPhase, setStage, appendLog, setResult, setError } = useMergeStore();
+  const isLead = !!(user && room && user.id === room.leadId);
+  const { phase, logs, result, error, setPhase, appendLog, setResult, setError } = useMergeStore();
 
-  const [logCount, setLogCount] = useState(0);
+  // The 4 high-level stage cards advance with real backend log progress
+  // (the backend streams ~8 log stages during a merge).
+  const stage = Math.min(STAGE_LABELS.length - 1, Math.floor(logs.length / 2));
+
   const [copied, setCopied] = useState(false);
 
   // GitHub push state
@@ -61,12 +49,28 @@ export default function MergePage() {
   const [ghError, setGhError] = useState('');
 
   const logEndRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const logRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logCount, logs]);
+  }, [logs]);
+
+  // Rehydrate room + tasks on mount (refresh / direct nav), and restore an
+  // already-completed merge so the result shows without re-running anything.
+  useEffect(() => {
+    if (!code) return;
+    connectSocket();
+    joinSocketRoom(code);
+    useRoomStore.getState().fetchRoom(code);
+    useTaskStore.getState().fetchTasks(code);
+    mergeApi.result(code)
+      .then((r) => {
+        if (r.data?.mergedFiles && Object.keys(r.data.mergedFiles).length > 0) {
+          setResult(r.data);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
 
   useEffect(() => {
     connectSocket();
@@ -80,15 +84,13 @@ export default function MergePage() {
         : 'info') as 'info' | 'ok' | 'warn';
       if (text) appendLog({ tag, text });
 
-      if (payload.done && (rawTag === 'success' || rawTag === 'error')) {
-        clearInterval(stageRef.current!);
-        clearInterval(logRef.current!);
-      }
+      // Non-leads don't click "Start merge", so move them into the merging
+      // view as soon as the lead's merge starts streaming logs.
+      if (useMergeStore.getState().phase === 'idle') setPhase('merging');
+
     });
 
     socket.on('merge_complete', (_summary: unknown) => {
-      clearInterval(stageRef.current!);
-      clearInterval(logRef.current!);
       mergeApi.result(code!).then((r) => {
         setResult(r.data);
         setPhase('complete');
@@ -96,8 +98,6 @@ export default function MergePage() {
     });
 
     socket.on('merge_error', (payload: { message?: string }) => {
-      clearInterval(stageRef.current!);
-      clearInterval(logRef.current!);
       setError(payload.message ?? 'Merge failed. Please try again.');
       setPhase('idle');
     });
@@ -110,38 +110,12 @@ export default function MergePage() {
 
   const handleStartMerge = () => {
     setPhase('merging');
-    setLogCount(0);
-
-    if (room?.id) {
-      mergeApi.trigger(code!).catch((e) => setError((e as Error).message));
-      emit('trigger_merge', { roomId: room.id });
-    }
-
-    // Simulate progress locally
-    let s = 0;
-    stageRef.current = setInterval(() => {
-      s++;
-      if (s >= STAGE_LABELS.length) {
-        clearInterval(stageRef.current!);
-        return;
-      }
-      setStage(s);
-    }, 3500);
-
-    let l = 0;
-    logRef.current = setInterval(() => {
-      l++;
-      setLogCount(l);
-      if (l >= LOG_SEQ.length) clearInterval(logRef.current!);
-    }, 700);
+    // Trigger via socket only — the handler verifies the lead, sets the room
+    // to "merging", and runs the merge. (Previously we also called the HTTP
+    // endpoint, which started a second concurrent merge.) Progress is driven
+    // by the real merge_log_stream events from the backend.
+    emit('trigger_merge', { roomId: room?.id });
   };
-
-  useEffect(() => {
-    return () => {
-      clearInterval(stageRef.current!);
-      clearInterval(logRef.current!);
-    };
-  }, []);
 
   const shareUrl = `${window.location.origin}/rooms/${code}/merge`;
 
@@ -166,7 +140,7 @@ export default function MergePage() {
     }
   };
 
-  const displayLogs = logs.length > 0 ? logs : LOG_SEQ.slice(0, logCount).map((l, i) => ({ ...l, id: `l${i}`, timestamp: '' }));
+  const displayLogs = logs;
 
   return (
     <div className="min-h-screen bg-ms-base">
@@ -193,10 +167,13 @@ export default function MergePage() {
                 {phase === 'complete' && !result && 'Merge complete'}
               </p>
             </div>
-            {phase === 'idle' && (
+            {phase === 'idle' && isLead && (
               <Button size="lg" className="bg-ms-purple hover:bg-[#b585ff] text-white" onClick={handleStartMerge}>
                 <GitMerge size={16} /> Start merge
               </Button>
+            )}
+            {phase === 'idle' && !isLead && (
+              <span className="text-xs text-ms-fg3">Waiting for the team lead to start the merge…</span>
             )}
           </div>
 
@@ -250,7 +227,7 @@ export default function MergePage() {
               <GitMerge size={32} className="text-ms-purple mx-auto mb-4" />
               <h3 className="font-bold text-lg mb-2">All {branchCount || ''} branch{branchCount !== 1 ? 'es' : ''} submitted</h3>
               <p className="text-sm text-ms-fg2 max-w-md mx-auto">
-                DeepSeek-R1 will review every file, resolve interface mismatches semantically,
+                Mosaic AI will review every file, resolve interface mismatches semantically,
                 and produce a unified runnable codebase.
               </p>
             </div>
@@ -261,7 +238,7 @@ export default function MergePage() {
             <div className="rounded-xl border border-ms-purple/30 bg-ms-purple/5 p-8 text-center">
               <Loader2 size={32} className="text-ms-purple mx-auto mb-4 animate-ms-spin" />
               <h3 className="font-bold text-lg text-ms-purple mb-2">{STAGE_LABELS[stage]}…</h3>
-              <p className="text-sm text-ms-fg2">Reconciling {branchCount || ''} branch{branchCount !== 1 ? 'es' : ''} · DeepSeek-R1</p>
+              <p className="text-sm text-ms-fg2">Reconciling {branchCount || ''} branch{branchCount !== 1 ? 'es' : ''} · Llama 3.3 70B</p>
             </div>
           )}
 

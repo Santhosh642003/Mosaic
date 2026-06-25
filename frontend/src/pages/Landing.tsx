@@ -17,14 +17,14 @@ const STEPS = [
     icon: Code2,
     color: '#4F8EF7',
     title: 'Build in parallel',
-    desc: "Each teammate gets their own AI coding session scoped to their task. Monaco editor + Qwen2.5-Coder as co-pilot. Everyone ships simultaneously.",
+    desc: "Each teammate gets their own AI coding session scoped to their task. Monaco editor + Mosaic AI as co-pilot. Everyone ships simultaneously.",
   },
   {
     num: '03',
     icon: GitMerge,
     color: '#3FB950',
     title: 'Semantic merge',
-    desc: 'DeepSeek-R1 reviews all codebases, resolves integration conflicts semantically, and produces a unified working project downloadable as a ZIP.',
+    desc: 'Mosaic AI reviews all codebases, resolves integration conflicts semantically, and produces a unified working project downloadable as a ZIP.',
   },
 ];
 
@@ -106,7 +106,7 @@ export default function Landing() {
         <div className="relative max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-ms-blue/30 bg-ms-blue/10 text-ms-blue text-xs font-semibold mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-ms-blue animate-ms-pulse" />
-            Built for hackathon teams · Powered by Qwen2.5-Coder + DeepSeek-R1
+            Built for hackathon teams · Powered by Llama 3.3 70B
           </div>
 
           <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6">
@@ -172,7 +172,7 @@ export default function Landing() {
               </div>
               {/* Right: AI chat */}
               <div className="border-l border-ms-subtle p-3 flex flex-col gap-2">
-                <p className="text-[10px] font-semibold text-ms-fg3 uppercase tracking-wider">AI Chat · Qwen2.5</p>
+                <p className="text-[10px] font-semibold text-ms-fg3 uppercase tracking-wider">AI Chat · Mosaic AI</p>
                 <div className="bg-ms-raised rounded p-2 text-[11px] text-ms-fg2 leading-4">
                   Add error handling for duplicate messages and return a 409 status
                 </div>

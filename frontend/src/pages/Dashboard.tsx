@@ -43,6 +43,9 @@ export default function Dashboard() {
   }, []);
 
   const completedRooms = rooms.filter((r) => r.status === 'complete').length;
+  const activeRooms = rooms.filter((r) =>
+    ['waiting', 'decomposing', 'coding', 'merging'].includes(r.status)
+  ).length;
   const isEmpty = !isLoading && rooms.length === 0;
 
   return (
@@ -66,8 +69,8 @@ export default function Dashboard() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
           {[
-            { icon: Users,    label: 'Rooms created',    value: String(rooms.length),        color: 'text-ms-blue'   },
-            { icon: Zap,      label: 'Tasks completed',  value: '—',                          color: 'text-ms-green'  },
+            { icon: Users,    label: 'Your rooms',       value: String(rooms.length),         color: 'text-ms-blue'   },
+            { icon: Zap,      label: 'Active rooms',     value: String(activeRooms),          color: 'text-ms-green'  },
             { icon: GitMerge, label: 'Merges done',      value: String(completedRooms),       color: 'text-ms-purple' },
             { icon: Clock,    label: 'Saved codebases',  value: String(codebases.length),     color: 'text-ms-amber'  },
           ].map(({ icon: Icon, label, value, color }) => (

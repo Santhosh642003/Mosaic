@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useTaskStore, normalizeTask } from '@/stores/taskStore';
 import { useRoomStore } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
-import { getSocket, connectSocket } from '@/lib/socket';
+import { getSocket, connectSocket, joinSocketRoom } from '@/lib/socket';
 import { tasks as tasksApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -193,8 +193,7 @@ export default function Decomposition() {
     const socket = getSocket();
 
     // Re-join the socket room in case we navigated here from Lobby
-    const token = localStorage.getItem('access_token');
-    if (code) socket.emit('join_room', { code, token });
+    if (code) joinSocketRoom(code);
 
     // Shared loader: normalize raw tasks, recover my assignment, reveal cards.
     const applyTasks = (rawTasks: Record<string, unknown>[]) => {

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useTaskStore, useMyTask } from '@/stores/taskStore';
 import { useRoomStore, useRoom } from '@/stores/roomStore';
 import { useUser } from '@/stores/authStore';
-import { getSocket, connectSocket, disconnectSocket, emit } from '@/lib/socket';
+import { getSocket, connectSocket, disconnectSocket, emit, joinSocketRoom } from '@/lib/socket';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/types';
 
@@ -68,6 +68,7 @@ export default function CodingSession() {
   const [input, setInput] = useState('');
   const [timer, setTimer] = useState(0);
   const [isMarking, setIsMarking] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const currentCode = editorCode[activeFile] ?? '';
@@ -86,6 +87,27 @@ export default function CodingSession() {
     const t = setInterval(() => setTimer((s) => s + 1), 1000);
     return () => { clearInterval(t); };
   }, []);
+
+  // Rehydrate room + tasks on mount so a refresh or direct navigation to the
+  // coding page restores membership, the assigned task, and the file list.
+  useEffect(() => {
+    if (!code) return;
+    connectSocket();
+    (async () => {
+      await useRoomStore.getState().fetchRoom(code);
+      await useTaskStore.getState().fetchTasks(code);
+      joinSocketRoom(code);
+    })();
+  }, [code]);
+
+  // When the assigned task becomes available (after rehydration), seed the
+  // editor with its saved code and select the first file — without clobbering
+  // any edits already in progress.
+  useEffect(() => {
+    if (!myTask) return;
+    setEditorCode((prev) => (Object.keys(prev).length ? prev : (myTask.code ?? {})));
+    setActiveFile((prev) => prev || myTask.files?.[0] || '');
+  }, [myTask]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -147,13 +169,24 @@ export default function CodingSession() {
     });
   };
 
-  const handleMarkDone = async () => {
+  const insertCode = (snippet: string) => {
+    if (!activeFile || !snippet) return;
+    setEditorCode((prev) => ({
+      ...prev,
+      [activeFile]: prev[activeFile] ? `${prev[activeFile]}\n\n${snippet}` : snippet,
+    }));
+  };
+
+  const handleMarkDone = () => {
+    if (!myTask || submitted) return;
     setIsMarking(true);
     const submitCode = Object.keys(editorCode).length > 0 ? editorCode : { [activeFile]: currentCode };
-    emit('submit_task', { taskId: myTask?.id ?? '', code: submitCode });
-    // Navigation happens via the all_tasks_done socket event (when everyone is done).
-    // Fallback: if socket event doesn't arrive within 3s, navigate anyway.
-    setTimeout(() => navigate(`/rooms/${code}/merge`), 3000);
+    emit('submit_task', { taskId: myTask.id, code: submitCode });
+    emit('update_status', { status: 'done' });
+    setSubmitted(true);
+    setIsMarking(false);
+    // Everyone is moved to the merge page together via the all_tasks_done
+    // socket event once the last teammate submits — no premature navigation.
   };
 
   const teammates = members
@@ -201,9 +234,10 @@ export default function CodingSession() {
               size="sm"
               className="bg-ms-green hover:bg-[#56d364] text-white"
               loading={isMarking}
+              disabled={submitted || !myTask}
               onClick={handleMarkDone}
             >
-              <Check size={14} /> Mark as Done
+              <Check size={14} /> {submitted ? 'Waiting for team…' : 'Mark as Done'}
             </Button>
           </div>
         </div>
@@ -382,7 +416,7 @@ export default function CodingSession() {
                 <div className="w-5 h-5 rounded bg-ms-purple/20 flex items-center justify-center">
                   <span className="text-ms-purple text-[10px] font-bold">AI</span>
                 </div>
-                <span className="text-xs font-bold">Qwen2.5-Coder</span>
+                <span className="text-xs font-bold">Mosaic AI</span>
                 <span className="ml-auto text-[10px] text-ms-green font-semibold">● Live</span>
               </div>
               <div className="mt-1.5 text-[10px] text-ms-fg3">
@@ -412,7 +446,12 @@ export default function CodingSession() {
                           <div key={i} className="my-2">
                             <div className="flex items-center justify-between px-2 py-1 bg-ms-deep rounded-t border border-ms-border">
                               <span className="text-[10px] text-ms-fg3">{lang || 'code'}</span>
-                              <button className="text-[10px] text-ms-blue hover:underline">Insert</button>
+                              <button
+                                onClick={() => insertCode(lines.join('\n'))}
+                                className="text-[10px] text-ms-blue hover:underline"
+                              >
+                                Insert
+                              </button>
                             </div>
                             <pre className="bg-ms-deep border border-t-0 border-ms-border rounded-b p-2 overflow-x-auto text-ms-green font-mono text-[11px]">
                               {lines.join('\n')}

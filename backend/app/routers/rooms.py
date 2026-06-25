@@ -13,6 +13,7 @@ from app.auth_utils import get_current_user, get_optional_user
 from app.config import settings
 from app.database import get_db, get_redis
 from app.models import Room, RoomMember, User
+from app.socket_manager import sio
 from app.schemas import (
     CreateRoomRequest,
     JoinRoomRequest,
@@ -152,20 +153,31 @@ async def join_room(
     db.add(member)
     await db.flush()
 
-    # Update Redis state
-    raw = await redis.get(ROOM_STATE_KEY.format(code=code))
-    if raw:
-        state = json.loads(raw)
-        state["members"][member.id] = {
-            "id": member.id,
-            "user_id": user_id,
-            "display_name": display_name,
-            "role": "member",
-            "status": "waiting",
-            "skills": body.skills,
-            "is_guest": is_guest,
-        }
-        await redis.setex(ROOM_STATE_KEY.format(code=code), ROOM_TTL, json.dumps(state))
+    # Build authoritative room state from the DB (includes the new member),
+    # persist it to Redis, and broadcast so everyone already in the lobby sees
+    # the new member appear in real time.
+    members_result = await db.execute(
+        select(RoomMember).where(RoomMember.room_id == room.id)
+    )
+    state = {
+        "room_id": room.id,
+        "code": code,
+        "status": room.status,
+        "members": {
+            m.id: {
+                "id": m.id,
+                "user_id": m.user_id,
+                "display_name": m.display_name,
+                "role": m.role,
+                "status": m.status,
+                "skills": m.skills,
+                "is_guest": m.is_guest,
+            }
+            for m in members_result.scalars().all()
+        },
+    }
+    await redis.setex(ROOM_STATE_KEY.format(code=code), ROOM_TTL, json.dumps(state))
+    await sio.emit("room_state", state, room=code)
 
     return member
 
