@@ -41,7 +41,13 @@ class Settings(BaseSettings):
     github_redirect_uri: str = "http://localhost:8000/api/auth/github/callback"
 
     # ── LLM (OpenAI-compatible — works with Groq, Cerebras, DeepSeek, OpenRouter)
-    llm_base_url: str = "https://api.groq.com/openai/v1"
+    # Set LLM_BASE_URL and LLM_API_KEY in .env to choose a provider.
+    # Example values:
+    #   Groq:       https://api.groq.com/openai/v1
+    #   Cerebras:   https://api.cerebras.ai/v1
+    #   DeepSeek:   https://api.deepseek.com/v1
+    #   OpenRouter: https://openrouter.ai/api/v1
+    llm_base_url: str = ""
     llm_api_key: str = ""
     # Legacy alias: GROQ_API_KEY is accepted when LLM_API_KEY is not set.
     groq_api_key: str = ""

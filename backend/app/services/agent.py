@@ -19,9 +19,8 @@ from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from openai import AsyncOpenAI
-
 from app.config import settings
+from app.services.llm_service import get_llm_client
 from app.services.sandbox import SandboxProvider
 
 logger = logging.getLogger(__name__)
@@ -327,10 +326,7 @@ async def run_agent(
     """
     _model = model or settings.coding_model
     _max_steps = max_steps or settings.agent_max_steps
-    client = AsyncOpenAI(
-        base_url=settings.llm_base_url,
-        api_key=settings.resolved_api_key,
-    )
+    client = get_llm_client()  # single shared client — base_url from LLM_BASE_URL
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},

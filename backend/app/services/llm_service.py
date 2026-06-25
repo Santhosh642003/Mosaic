@@ -42,16 +42,41 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+# ── Single shared client — the only place AsyncOpenAI is constructed ──────────
+# agent.py and any future module must import get_llm_client() rather than
+# building their own AsyncOpenAI instance, so there is exactly one source of
+# truth for base_url / api_key.
+
 _raw_client: AsyncOpenAI | None = None
 _instructor_client: instructor.AsyncInstructor | None = None
 
 
-def _client() -> AsyncOpenAI:
+def get_llm_client() -> AsyncOpenAI:
+    """
+    Return the singleton AsyncOpenAI client configured from .env.
+
+    This is the ONLY place AsyncOpenAI(...) should be constructed in the
+    entire backend. All callers (llm_service, agent loop, future services)
+    must import this function instead of building their own client.
+    """
     global _raw_client
     if _raw_client is None:
+        if not settings.llm_base_url:
+            raise RuntimeError(
+                "LLM_BASE_URL is not set. Add it to your .env file.\n"
+                "  Groq:       LLM_BASE_URL=https://api.groq.com/openai/v1\n"
+                "  Cerebras:   LLM_BASE_URL=https://api.cerebras.ai/v1\n"
+                "  DeepSeek:   LLM_BASE_URL=https://api.deepseek.com/v1\n"
+                "  OpenRouter: LLM_BASE_URL=https://openrouter.ai/api/v1"
+            )
         _raw_client = AsyncOpenAI(
             base_url=settings.llm_base_url,
             api_key=settings.resolved_api_key,
+        )
+        logger.info(
+            "LLM client initialised: base_url=%s model=%s",
+            settings.llm_base_url,
+            settings.coding_model,
         )
     return _raw_client
 
@@ -59,11 +84,9 @@ def _client() -> AsyncOpenAI:
 def _instructor_client_get() -> instructor.AsyncInstructor:
     global _instructor_client
     if _instructor_client is None:
+        # Reuse the same underlying AsyncOpenAI — no second construction.
         _instructor_client = instructor.from_openai(
-            AsyncOpenAI(
-                base_url=settings.llm_base_url,
-                api_key=settings.resolved_api_key,
-            ),
+            get_llm_client(),
             mode=instructor.Mode.JSON,
         )
     return _instructor_client
@@ -92,7 +115,7 @@ async def _chat_stream(
     temperature: float = 0.2,
     max_tokens: int = 4096,
 ) -> AsyncGenerator[str, None]:
-    stream = await _client().chat.completions.create(
+    stream = await get_llm_client().chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
@@ -114,7 +137,7 @@ async def _chat_complete(
 ) -> str:
     for attempt in range(retries):
         try:
-            resp = await _client().chat.completions.create(
+            resp = await get_llm_client().chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
