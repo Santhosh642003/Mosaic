@@ -29,7 +29,9 @@ const initial = {
   myMemberId: null,
 };
 
-export const useRoomStore = create<RoomState>()((set, _get) => ({
+const MEMBER_KEY = (code: string) => `mosaic_member_${code.toUpperCase()}`;
+
+export const useRoomStore = create<RoomState>()((set, get) => ({
   ...initial,
 
   setRoom: (room) => set({ room }),
@@ -58,7 +60,14 @@ export const useRoomStore = create<RoomState>()((set, _get) => ({
         initials: m.initials ?? toInitials(m.displayName),
         avatarColor: m.avatarColor ?? avatarColor(m.displayName),
       }));
-      set({ room: data.room, members });
+      // Recover "me" — guests have no JWT, so restore the member id persisted
+      // at join time (survives page reloads) if it still matches a member.
+      let myMemberId = get().myMemberId;
+      if (!myMemberId) {
+        const stored = localStorage.getItem(MEMBER_KEY(code));
+        if (stored && members.some((m) => m.id === stored)) myMemberId = stored;
+      }
+      set({ room: data.room, members, myMemberId });
     } catch (err) {
       set({ error: (err as Error).message });
     } finally {
@@ -70,6 +79,8 @@ export const useRoomStore = create<RoomState>()((set, _get) => ({
     set({ isLoading: true, error: null });
     try {
       const { data: member } = await roomsApi.join(code, displayName, skills);
+      // Persist so guests keep their identity across reloads.
+      localStorage.setItem(MEMBER_KEY(code), member.id);
       set({ myMemberId: member.id });
       return member;
     } catch (err) {

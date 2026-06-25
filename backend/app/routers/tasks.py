@@ -2,14 +2,14 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth_utils import get_current_user, get_optional_user
 from app.database import get_db
 from app.models import Room, RoomMember, Task, User
-from app.schemas import SubmitTaskRequest, TaskResponse
+from app.schemas import AssignTaskRequest, SubmitTaskRequest, TaskResponse
 from app.socket_manager import sio
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ async def list_tasks(
 async def assign_task(
     code: str,
     task_id: str,
+    body: AssignTaskRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
     user: User | None = Depends(get_optional_user),
 ) -> Task:
@@ -52,12 +53,23 @@ async def assign_task(
     if task.status != "unassigned":
         raise HTTPException(status_code=409, detail="Task already assigned")
 
-    # Find the member record for the requesting user
-    member_q = select(RoomMember).where(RoomMember.room_id == room.id)
+    # Resolve the requesting member. Authenticated users are matched by their
+    # user id; guests have no JWT and are identified by the member id the
+    # client supplies (set when they joined). Never fall back to "any member"
+    # — that throws MultipleResultsFound and mis-assigns tasks.
+    member = None
     if user:
-        member_q = member_q.where(RoomMember.user_id == user.id)
-    member_result = await db.execute(member_q)
-    member = member_result.scalar_one_or_none()
+        member_q = select(RoomMember).where(
+            RoomMember.room_id == room.id,
+            RoomMember.user_id == user.id,
+        )
+        member = (await db.execute(member_q)).scalar_one_or_none()
+    elif body and body.member_id:
+        member_q = select(RoomMember).where(
+            RoomMember.room_id == room.id,
+            RoomMember.id == body.member_id,
+        )
+        member = (await db.execute(member_q)).scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=403, detail="Not a room member")
 

@@ -108,8 +108,10 @@ export const tasks = {
   get: (roomCode: string, taskId: string) =>
     client.get<Task>(`/rooms/${roomCode}/tasks/${taskId}`),
 
-  assign: (roomCode: string, taskId: string) =>
-    client.post<Task>(`/rooms/${roomCode}/tasks/${taskId}/assign`),
+  assign: (roomCode: string, taskId: string, memberId?: string | null) =>
+    client.post<Task>(`/rooms/${roomCode}/tasks/${taskId}/assign`, {
+      member_id: memberId ?? null,
+    }),
 
   submit: (roomCode: string, taskId: string, code: Record<string, string>) =>
     client.post<Task>(`/rooms/${roomCode}/tasks/${taskId}/submit`, { code }),

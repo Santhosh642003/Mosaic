@@ -168,6 +168,11 @@ class SubmitTaskRequest(BaseModel):
     code: dict[str, str]
 
 
+class AssignTaskRequest(BaseModel):
+    # Guests have no JWT, so the client identifies them by their member id.
+    member_id: str | None = None
+
+
 # ── Merge ─────────────────────────────────────────────────────────────────────
 
 class DiffEntrySchema(BaseModel):

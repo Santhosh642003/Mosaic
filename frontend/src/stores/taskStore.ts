@@ -162,7 +162,8 @@ export const useTaskStore = create<TaskState>()((set, _get) => ({
 
   assignTask: async (roomCode, taskId) => {
     try {
-      const { data } = await tasksApi.assign(roomCode, taskId);
+      const myMemberId = useRoomStore.getState().myMemberId;
+      const { data } = await tasksApi.assign(roomCode, taskId, myMemberId);
       // Normalize into the canonical shape (also enriches assignee name).
       const enriched = normalizeTask(data as unknown as Record<string, unknown>);
       set((s) => ({
